@@ -12,11 +12,15 @@ transcript anyone needs to read through.
 ## Procedure
 1. Get the task's diff — `sys_os_shell("gh pr diff <pr>")` (or
    `git -C .worktrees/<task_id> diff main...HEAD`).
-2. Create an isolated review worktree from the implementation branch:
-   `sys_os_shell("git worktree add .worktrees/review-<task_id> sybil/<task_id>")`.
-   This gives the reviewer full code state in a completely separate working
-   copy — any accidental writes are contained here and never touch the
-   implementer's branch or PR. Record the review worktree path.
+2. Create an isolated review worktree at the branch's current commit in
+   detached HEAD:
+   `sys_os_shell("git worktree add --detach .worktrees/review-<task_id> sybil/<task_id>")`.
+   Detached HEAD is required because the implementer's worktree already has
+   `sybil/<task_id>` checked out — git refuses a second checkout of the same
+   branch. The reviewer sees the full code state at the branch tip in a
+   completely separate working copy; it is read-only by design, and any
+   accidental writes are contained here and never touch the implementer's
+   branch or PR. Record the review worktree path.
 3. Run the deterministic gates first — tests / lint / typecheck via
    `sys_os_shell`. If red, re-dispatch the implementer (`builder` or `drone`,
    whichever built it) to drive it green first; don't involve the reviewer yet.
@@ -69,9 +73,10 @@ transcript anyone needs to read through.
 - The reviewer gets the diff + contract AND its own isolated review worktree
   (`.worktrees/review-<task_id>`) for full code context. Never point it at the
   implementer's worktree or transcript — the cross-vendor independence is the
-  whole point. The review worktree is a separate git working copy checked out
-  from the same branch; if the reviewer accidentally writes to it, nothing
-  touches the implementer's branch or PR.
+  whole point. The review worktree is a separate git working copy at the
+  branch's current commit in detached HEAD (read-only by design); if the
+  reviewer accidentally writes to it, nothing touches the implementer's branch
+  or PR.
 - `reviewer` is dispatched with `purpose: "review"`. It reports issues and
   never edits; only the implementer opens a PR, so a stray reviewer edit never
   reaches the deliverable.
