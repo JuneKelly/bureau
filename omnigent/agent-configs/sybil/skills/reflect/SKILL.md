@@ -1,6 +1,6 @@
 ---
 name: reflect
-description: At the end of a long or complex session, look back over how the run actually went and surface concrete, evidence-anchored suggestions for improving sybil itself — its config, skills, roster, or routing. Use when the user types /reflect, asks sybil to "self-reflect", "reflect on this session", "do a retro", or "what could be better about how you ran this". Produces SUGGESTIONS only — it never implements them: actioning a chosen suggestion routes through the normal paths (sybil authors skill/doc prose directly; config / policy / roster changes go through fanout + cross-review).
+description: At the end of a long or complex session, look back over how the run actually went and surface concrete, evidence-anchored suggestions for improving sybil itself — its config, skills, roster, or routing. Use when the user types /reflect, asks sybil to "self-reflect", "reflect on this session", "do a retro", or "what could be better about how you ran this". Produces SUGGESTIONS only — it never implements them, actioning a chosen suggestion routes through the normal paths (sybil authors skill/doc prose directly; config / policy / roster changes go through fanout + cross-review).
 ---
 
 # reflect — end-of-session self-improvement
@@ -21,6 +21,7 @@ itself — surface the issues, route them, let the human choose; don't fix in
 place.
 
 ## Procedure
+
 1. Set the scope. Default: the current session, end to end. If it's very long,
    focus on the segments with the most signal — failures, retries, loops,
    cancellations, escalations, dropped/announce-only turns, and human
@@ -80,12 +81,13 @@ place.
    `cross-review`. Never auto-edit config, never open a PR here, never merge.
 
 ## Notes
+
 - Reflection is the rare task sybil drives largely solo, because the evidence
   is its own conversation. The delegation rule still bites the instant a
   suggestion needs grounding in the codebase's current state or needs
   implementing — read your own skills/docs directly, but delegate real code
   investigation to `explorer` and every code/config change to `builder`/`drone`
-  + `cross-review`.
+  - `cross-review`.
 - Be critical, not self-congratulatory. The value is naming friction and misses
   precisely. A reflection that only praises the run is a failed reflection.
 - Suggestions are SUGGESTIONS. Surface and route; don't fix in place — mirror
