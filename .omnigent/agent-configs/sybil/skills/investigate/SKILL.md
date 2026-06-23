@@ -16,7 +16,7 @@ repository-specific technical question.
    `sys_session_send(agent="explorer"|"drone",
    title="explore-<task_slug>", args={purpose: "explore", model: "<model>",
    input: "<question + exact scope + evidence requested>"})`. Use `explorer`
-   (with `args.model: "claude-opus-4-6"`) for complex investigations requiring
+   (with `args.model: "claude-opus-4-8"`) for complex investigations requiring
    deep reasoning. Use `drone` (with `args.model: "claude-sonnet-4-6"`) for
    simple lookups or when cost matters. Use a task-based title such as
    `explore-ci-flake`, never the raw agent name. Use `purpose: "search"` only

@@ -17,7 +17,7 @@ dependency).
    `sys_session_send(agent="builder"|"drone", title="<task_slug>",
    args={purpose: "implement", model: "<model>", input: "<task + acceptance
    contract + worktree path>"})`. Use `builder` (with
-   `args.model: "claude-opus-4-6"`) for substantial subtasks and `drone` (with
+   `args.model: "claude-opus-4-8"`) for substantial subtasks and `drone` (with
    `args.model: "claude-sonnet-4-6"`) for minor ones. Use a short task-based
    title such as `auth-refactor` or `fix-sse-error`, never the raw agent name.
    State the scope and that it must work only inside `.worktrees/<task_id>`.

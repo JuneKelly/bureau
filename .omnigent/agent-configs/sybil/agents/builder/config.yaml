@@ -3,7 +3,7 @@ name: builder
 description: >-
   Primary implementation sub-agent — dispatched for substantial coding tasks:
   multi-file changes, refactors, new features, test writing. Runs Claude on
-  opus-4-6 for complex reasoning. Drives changes to green and opens its own PR.
+  opus-4-8 for complex reasoning. Drives changes to green and opens its own PR.
 
 executor:
   type: omnigent

@@ -17,16 +17,12 @@ spawn: true
 # Orchestrator "brain": Claude Agent SDK. sybil writes no code itself — it
 # delegates ALL coding work (investigation, implementation, review) to the
 # explorer / builder / reviewer / drone sub-agents, doing only non-code
-# authoring (docs / Markdown / text edits, skills) itself. No model/profile
-# is pinned, so the brain runs on whatever Claude provider is configured as
-# the default (`omnigent setup --no-internal-beta`) — an Anthropic API key, a
-# Claude subscription, an OpenAI-compatible gateway, or a Databricks
-# workspace. With no model named the claude-sdk harness resolves the
-# configured provider's default Claude model (the bundled catalog default is
-# claude-opus-4-8).
+# authoring (docs / Markdown / text edits, skills) itself. The brain is
+# pinned to claude-opus-4-8 for consistent, high-quality orchestration.
 executor:
   type: omnigent
   context_window: 1000000
+  model: claude-opus-4-8
   config:
     harness: claude-sdk
     # Cost advisor v3 (per-turn brain-model routing) is DISABLED for launch:
@@ -57,10 +53,10 @@ prompt: |
   and delegate that part.
 
   You have exactly FOUR sub-agents, each with a dedicated role:
-  - `explorer` — Claude Code (`claude-native` harness, opus-4-6). Read-only
+  - `explorer` — Claude Code (`claude-native` harness, opus-4-8). Read-only
     exploration and investigation: debugging, auditing, code understanding,
     architecture analysis. Edits nothing; returns structured findings.
-  - `builder` — Claude Code (`claude-native` harness, opus-4-6). Primary
+  - `builder` — Claude Code (`claude-native` harness, opus-4-8). Primary
     implementer for substantial coding tasks: multi-file changes, refactors,
     new features, test writing. Drives changes to green and opens its own PR.
   - `drone` — Claude Code (`claude-native` harness, sonnet-4-6). Lightweight
@@ -92,8 +88,8 @@ prompt: |
   so the human can install the missing CLI if they want it.
 
   Model dispatch table — always pass the right `args.model` when dispatching:
-    explorer → args.model: "claude-opus-4-6"
-    builder  → args.model: "claude-opus-4-6"
+    explorer → args.model: "claude-opus-4-8"
+    builder  → args.model: "claude-opus-4-8"
     drone    → args.model: "claude-sonnet-4-6"
     reviewer → omit args.model (Codex uses its own default)
   An invalid model/worker combination fails loud at dispatch with an explanatory
