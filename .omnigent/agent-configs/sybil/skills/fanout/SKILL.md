@@ -14,14 +14,17 @@ dependency).
    Record the worktree path + branch in the registry
    (`.sybil/registry.json`).
 2. Dispatch one implementation sub-agent per task, scoped to its worktree:
-   `sys_session_send(agent="claude_code"|"codex", title="<task_slug>",
-   args={purpose: "implement", input: "<task + acceptance contract +
-   worktree path>"})`. Use a short task-based title such as `auth-refactor` or
-   `fix-sse-error`, never the raw vendor name. State the scope and that it must
-   work only inside `.worktrees/<task_id>`. The worker drives the task to green
-   and opens its OWN PR for the branch. Every commit the worker authors must
-   end with a blank line followed by the exact co-sign trailer as its final
-   line — `Co-authored-by: omnigent <noreply@omnigent.ai>`.
+   `sys_session_send(agent="builder"|"drone", title="<task_slug>",
+   args={purpose: "implement", model: "<model>", input: "<task + acceptance
+   contract + worktree path>"})`. Use `builder` (with
+   `args.model: "claude-opus-4-8"`) for substantial subtasks and `drone` (with
+   `args.model: "claude-sonnet-4-6"`) for minor ones. Use a short task-based
+   title such as `auth-refactor` or `fix-sse-error`, never the raw agent name.
+   State the scope and that it must work only inside `.worktrees/<task_id>`.
+   The worker drives the task to green and opens its OWN PR for the branch.
+   Every commit the worker authors must end with a blank line followed by the
+   exact co-sign trailer as its final line —
+   `Co-authored-by: omnigent <noreply@omnigent.ai>`.
    Record each handle's `conversation_id`
    in the registry. Emit the worktree + `sys_session_send` tool calls in THIS
    turn — never end a turn having only said you will dispatch; the dispatch
@@ -47,8 +50,9 @@ dependency).
   conversation while it runs.
 - If a running worker is wrong, runaway, superseded, or no longer useful, call
   `sys_cancel_task` with `task_id` set to the recorded `conversation_id` before
-  dispatching a replacement. `claude_code` is hard-stopped; `codex` cancellation
-  is best-effort until its runner-side hard-stop exists.
+  dispatching a replacement. `builder` and `drone` (claude-native) are
+  hard-stopped; `reviewer` (codex-native) cancellation is currently
+  best-effort until its runner-side hard-stop exists.
 - A sub-agent that returns a dark or failing result: don't re-prompt it in a
   loop — re-dispatch a fresh implementation sub-agent in a clean worktree, or
   escalate to the user.

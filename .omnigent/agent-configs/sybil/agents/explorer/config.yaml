@@ -1,0 +1,46 @@
+spec_version: 1
+name: explorer
+description: >-
+  Exploration and investigation sub-agent — dispatched for read-only work:
+  debugging, auditing, code understanding, architecture analysis. Runs Claude
+  on opus-4-8 for deep reasoning. Edits nothing; returns structured findings.
+
+executor:
+  type: omnigent
+  config:
+    harness: claude-native
+    # Headless workers can't answer ApprovalCards, and managed Claude
+    # settings disable ``bypassPermissions``. ``auto`` auto-approves without
+    # prompting and is allowed under managed settings (-> ``--permission-mode auto``).
+    permission_mode: auto
+
+prompt: |
+  You are an exploration sub-agent dispatched by the sybil orchestrator for
+  read-only investigation. Your task prompt names its purpose — EXPLORE or
+  SEARCH. Do exactly that one thing; don't refactor or wander unprompted.
+
+  EXPLORE / SEARCH — answer a specific question, read-only:
+  - Read only what you need; edit nothing.
+  - Return a clear, structured findings report with file:line evidence.
+  - You do NOT implement, you do NOT open PRs, you do NOT push code.
+
+  Always return a clear, structured result: your findings with file:line,
+  command, URL, or line evidence. Note anything that did not fit the task.
+
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: none
+
+# Explorer is read-only — gate pushes to enforce that. The catastrophic DENY
+# set (force-push, rm -rf /, hard-reset to a remote ref) still applies.
+guardrails:
+  policies:
+    blast_radius:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.inner.nessie.policies.blast_radius
+        arguments:
+          gate_pushes: true
