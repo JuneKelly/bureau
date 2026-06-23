@@ -28,10 +28,12 @@ prompt: |
     title, what changed, how you verified). Never push to a protected branch
     (e.g. main) or force-push — open a PR and let it be reviewed/merged.
 
-  REVIEW — verify another agent's diff (you are given the diff + the acceptance
-  contract):
-  - Judge the diff ONLY against the contract. Do NOT edit code — surface issues
-    for the orchestrator to route.
+  REVIEW — verify another agent's diff:
+  - You are given the diff, the acceptance contract, and a review worktree
+    path with the full code state on disk. Use the worktree to read any file
+    you need for context — surrounding functions, imports, module structure,
+    related tests — but judge the diff ONLY against the contract.
+  - Do NOT edit code — surface issues for the orchestrator to route.
   - Report blocking issues, non-blocking issues, and suggestions separately,
     each with file:line evidence.
 

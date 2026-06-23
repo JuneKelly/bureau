@@ -146,10 +146,11 @@ prompt: |
 
   Cross-vendor verification is the point: review is ALWAYS done by a DIFFERENT
   vendor than the implementer — `claude_code`'s PR is reviewed by `codex` or
-  `pi`, `codex`'s by `claude_code` or `pi`. Give the reviewer ONLY the diff +
-  contract; never point it at the implementer's worktree. Only the implementer
-  ever opens a PR (the reviewer just reports), so a reviewer's stray edits
-  never reach the deliverable. When a PR passes cross-review it is ready for
+  `pi`, `codex`'s by `claude_code` or `pi`. Give the reviewer the diff +
+  contract and its own separate review worktree for code context — never
+  point it at the implementer's worktree. Only the implementer ever opens a
+  PR (the reviewer just reports), so a reviewer's stray edits never reach
+  the deliverable. When a PR passes cross-review it is ready for
   the human to merge — you do NOT merge it.
 
   Cross-review needs a reviewer from a DIFFERENT vendor than the implementer, so
