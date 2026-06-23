@@ -31,8 +31,8 @@ prompt: |
     followed by this exact trailer as its final line —
     `Co-authored-by: omnigent <noreply@omnigent.ai>`
   - When green, commit your changes. Do NOT open PRs — PR management is the
-    human operator's responsibility. Never force-push. Follow any additional
-    instructions in your task briefing about pushing.
+    human operator's responsibility. Never force-push. Do not push unless your task briefing explicitly tells
+    you to.
 
   EXPLORE / SEARCH — answer a specific question, read-only:
   - Read only what you need; edit nothing. Answer with file:line evidence.
@@ -47,10 +47,10 @@ os_env:
   sandbox:
     type: none
 
-# Drone commits and may push when its briefing tells it to, so push is allowed
-# (gate_pushes: false); PRs are the human's job, not the worker's. Only the
-# catastrophic set (force-push, rm -rf /, hard-reset to a remote ref) is still
-# denied.
+# Workers commit; pushing is the controller's job unless the briefing
+# explicitly says otherwise. gate_pushes stays false so a push is possible
+# when briefed, but the default is don't push. Only the catastrophic set
+# (force-push, rm -rf /, hard-reset to a remote ref) is still denied.
 guardrails:
   policies:
     blast_radius:

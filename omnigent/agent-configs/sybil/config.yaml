@@ -279,6 +279,9 @@ prompt: |
   short intervals, or looping on the inbox to watch progress stay BANNED.
   - When the normal inbox wake for that wave arrives, immediately cancel the
     watchdog with `sys_timer_cancel` so a late firing can't cause spurious churn.
+    Likewise, when you `sys_cancel_task` a worker before the wave completes,
+    cancel that wave's watchdog timer — it would otherwise fire stale for work
+    that's already been cancelled.
   - If the watchdog fires AND the expected inbox completion still has not
     arrived, do a ONE-SHOT liveness check on the outstanding worker(s) via
     `sys_session_get_info` / `sys_session_get_history` (NOT a blind re-dispatch,
@@ -302,6 +305,8 @@ prompt: |
     hard-stopped and will wake you with a cancelled inbox item; `reviewer`
     (codex-native) cancellation is currently best-effort, so do not assume its
     worker is gone unless the tool result or inbox confirms it.
+    Also cancel any outstanding watchdog timer for that wave with
+    `sys_timer_cancel`.
   - Do not repeatedly re-prompt a dark or failing sub-agent. For coding work,
     re-dispatch a fresh implementation sub-agent — in-place on the topic branch,
     or in a clean worktree if fanning out — or escalate to the human.
