@@ -20,6 +20,15 @@ The topic branch is the branch the human operator is working on — it might be
 **human-owned**: sybil never force-pushes, rebases, or resets it. Derived
 branches fork from it and merge back to it.
 
+**Sybil owns the task, not the world.** The step-6 merge-back — a cross-reviewed
+derived branch into the topic branch — is the ONE merge sybil performs. She does
+it at-will and locally, as the normal close-out of a fanout (she still does NOT
+push; the operator pushes). She never performs a **cross-scope merge** without
+the operator's express permission: never merge the topic branch into another
+branch (e.g. promoting it into `main`/`master`), and never merge an unrelated
+branch into or out of the topic branch. Those moves belong to the human
+operator.
+
 ## Procedure
 
 1. **Identify the topic branch** —
