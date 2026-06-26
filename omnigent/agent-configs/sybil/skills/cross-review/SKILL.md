@@ -24,7 +24,15 @@ Before starting, identify these from the task context:
   - PR → `gh pr diff <pr>`
 - **Implementer identity** — the `agent` + `title` (or `session_id`) of the
   worker that built it, so fix-tasks route back to the same conversation.
-- **Acceptance contract** — what the diff is supposed to achieve.
+- **Acceptance contract** — what the diff is supposed to achieve. On a
+  single-commit review this is one statement. On a **multi-commit reference**
+  (a fanout branch, or an in-place branch reviewed across several rounds), keep
+  the contract **scoped per round**: hold one acceptance criterion per
+  commit / logical change, and on each round hand the reviewer ONLY the criteria
+  for the commits present in that round's diff. Don't re-submit a single
+  undifferentiated blob covering the whole branch — it forces the reviewer to
+  re-litigate already-verified commits and blurs which criterion a blocking
+  issue maps back to.
 
 ## Procedure
 
@@ -57,7 +65,9 @@ Before starting, identify these from the task context:
    need for context, but your review is against the diff + contract. Report
    blocking / non-blocking / suggestions. Do not edit code."})`. Give the
    reviewer the diff as text AND the review worktree path — never point it at
-   the implementer's working tree. Fetch the diff, create the review worktree,
+   the implementer's working tree. When the reference spans multiple commits,
+   pass only the acceptance criteria covering the commits in this round's diff
+   (see Inputs) — not the whole-branch contract. Fetch the diff, create the review worktree,
    and emit the `sys_session_send` call in the SAME turn you decide to review —
    never end a turn having only announced intent with no tool call. Once the
    reviewer dispatch is in flight, end your turn; collect the inbox-delivered
@@ -69,7 +79,9 @@ Before starting, identify these from the task context:
    `title` (or address it by `session_id`) with `purpose: "implement"`, so the
    worker keeps its context. If using the registry, record fix-tasks there.
    Remove the review worktree before looping back to step 1 — it will be
-   re-created from the updated reference.
+   re-created from the updated reference. On the next round, scope the contract
+   to the fix commit(s) and the criteria they were meant to satisfy — don't
+   re-review commits that already passed.
 7. When gates are green (or trusted from the implementer) AND there are zero
    blocking issues, the work passes review. If using the registry, mark it
    ready there. The deliverable depends on the mode:
