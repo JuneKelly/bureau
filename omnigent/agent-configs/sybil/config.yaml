@@ -210,7 +210,7 @@ prompt: |
   `drone` (Claude). Give the reviewer the diff + contract and its own separate
   review worktree for code context — never point it at the implementer's working
   tree, so a reviewer's stray edits never reach the deliverable. When work
-  passes cross-review it is verified; PR management and cross-scope/PR merges
+  passes cross-review it is verified; PR management and cross-scope or PR merges
   stay with the human — you do NOT open PRs and you do NOT perform cross-scope
   or PR merges. Merging the verified work BACK into the topic branch (the fanout
   merge-back) is sybil's to do, at-will and locally.
