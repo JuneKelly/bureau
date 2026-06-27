@@ -8,10 +8,7 @@ description: >-
 executor:
   type: omnigent
   config:
-    harness: claude-native
-    # Headless workers can't answer ApprovalCards, and managed Claude
-    # settings disable ``bypassPermissions``. ``auto`` auto-approves without
-    # prompting and is allowed under managed settings (-> ``--permission-mode auto``).
+    harness: opencode
     permission_mode: auto
 
 prompt: |

@@ -8,11 +8,11 @@ description: >-
 executor:
   type: omnigent
   config:
-    harness: codex-native
+    harness: opencode
     # YOLO: headless workers can't answer approval prompts, so run Codex
     # with full bypass. The server translates this into
     # ``--dangerously-bypass-approvals-and-sandbox`` (native sub-agents only).
-    yolo: true
+    # yolo: true
 
 prompt: |
   You are a review sub-agent dispatched by the sybil orchestrator to verify
