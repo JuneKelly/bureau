@@ -2,16 +2,13 @@ spec_version: 1
 name: explorer
 description: >-
   Exploration and investigation sub-agent — dispatched for read-only work:
-  debugging, auditing, code understanding, architecture analysis. Runs Claude
-  on opus-4-8 for deep reasoning. Edits nothing; returns structured findings.
+  debugging, auditing, code understanding, architecture analysis. Runs
+  Deepseek v4 Pro for deep reasoning. Edits nothing; returns structured findings.
 
 executor:
   type: omnigent
   config:
     harness: opencode
-    # Headless workers can't answer ApprovalCards, and managed Claude
-    # settings disable ``bypassPermissions``. ``auto`` auto-approves without
-    # prompting and is allowed under managed settings (-> ``--permission-mode auto``).
     permission_mode: auto
 
 prompt: |

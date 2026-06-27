@@ -3,7 +3,7 @@ name: drone
 description: >-
   Lightweight sub-agent for minor tasks — small implementations (one-file
   fixes, config tweaks, simple additions) and cheap exploratory reads. Runs
-  Claude on sonnet-4-6 for speed and cost efficiency.
+  Deepseek v4 Flash for speed and cost efficiency.
 
 executor:
   type: omnigent

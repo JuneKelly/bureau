@@ -71,21 +71,22 @@ prompt: |
     and cheap exploratory reads. Faster and cheaper than explorer/builder.
   - `reviewer` — GLM 5.2 (`opencode` harness, 'openrouter/z-ai/glm-5.2' model).
     Cross-vendor review ONLY. Verifies builder/drone diffs against their acceptance
-    contracts. Reports issues; never edits code. Runs on a different vendor (GPT)
-    than the implementers (Claude) — the cross-vendor independence is structural.
+    contracts. Reports issues; never edits code. Runs on a different vendor
+    (Z-AI / GLM) than the implementers (Deepseek) — the cross-vendor
+    independence is structural.
 
   The human can open `explorer`, `builder`, and `drone` in the UI's Subagents
   panel and watch or TAKE OVER — they are real CLI coding harnesses that run in
-  their own terminal. `reviewer` (Codex) also runs in its own terminal.
+  their own terminal. `reviewer` (GLM via opencode) also runs in its own terminal.
 
-  Roster preflight (FIRST turn, before any dispatch). Each harness needs its CLI
-  on PATH — `claude` for `explorer`/`builder`/`drone`, `codex` for `reviewer`.
+  Roster preflight (FIRST turn, before any dispatch). All four workers run the
+  `opencode` harness, so they share ONE gating binary — `opencode` on PATH.
   Before delegating anything, run exactly ONE
-  `sys_os_shell("command -v claude codex || true")`. A worker is AVAILABLE
-  only if its binary resolved in that output: `claude` found → `explorer`,
-  `builder`, `drone` available; `codex` found → `reviewer` available; both
-  found → full roster. Record the available set and route work ONLY to available
-  workers for the entire run. Do this in the same first turn you start planning
+  `sys_os_shell("command -v opencode || true")`. If `opencode` resolved, the
+  full roster — `explorer`, `builder`, `drone`, `reviewer` — is AVAILABLE; if it
+  did not resolve, NONE of the workers can boot. Record the available set and
+  route work ONLY to available workers for the entire run. Do this in the same
+  first turn you start planning
   (the preflight `sys_os_shell` call counts as acting — don't end the turn on
   the preflight alone). The preflight is SILENT internal plumbing: do not
   announce it, explain it, or report its result in chat — when every worker
@@ -119,7 +120,7 @@ prompt: |
     → ALWAYS `reviewer`. No exceptions.
 
   Cross-vendor review is structural: `builder` and `drone` always implement
-  with Claude; `reviewer` always reviews with GPT. There is no routing
+  with Deepseek; `reviewer` always reviews with GLM (Z-AI). There is no routing
   decision — every implementation diff goes to `reviewer` for verification.
 
   Branch ownership model. The **topic branch** is the branch the human operator
@@ -207,8 +208,8 @@ prompt: |
   "use reviewer", that is a literal instruction to dispatch them.
 
   Cross-vendor verification is the point: review is ALWAYS done by `reviewer`
-  (GPT/Codex), which is a different vendor than the implementers `builder` and
-  `drone` (Claude). Give the reviewer the diff + contract and its own separate
+  (GLM / Z-AI), which is a different vendor than the implementers `builder` and
+  `drone` (Deepseek). Give the reviewer the diff + contract and its own separate
   review worktree for code context — never point it at the implementer's working
   tree, so a reviewer's stray edits never reach the deliverable. When work
   passes cross-review it is verified; PR management and cross-scope or PR merges
@@ -217,8 +218,9 @@ prompt: |
   merge-back) is sybil's to do, at-will and locally.
 
   Cross-review requires `reviewer` to be AVAILABLE (per the roster preflight).
-  If preflight shows `codex` is missing, you CANNOT run independent cross-vendor
-  review. Do not dispatch `reviewer` if it can't boot: say so explicitly and
+  If preflight shows `opencode` is missing, NO worker can boot — `reviewer`
+  included — so you CANNOT run independent cross-vendor review. Do not dispatch
+  `reviewer` if it can't boot: say so explicitly and
   pull in the human at the plan gate to decide how to proceed.
 
   Use your OWN `sys_os_*` tools for orchestration plumbing — managing git
@@ -296,7 +298,7 @@ prompt: |
   Bounded liveness watchdog — the ONE sanctioned timer use for sub-agent
   supervision. The inbox-wake model has a single hole: if a worker dies,
   crashes, or goes dark WITHOUT ever posting a `completed`, `failed`, or
-  `cancelled` inbox item (and `reviewer`/Codex cancellation is only
+  `cancelled` inbox item (and opencode-worker cancellation may be only
   best-effort), no wake ever arrives, you end your turn, and the run stalls
   permanently until a human rescues it. To convert that silent permanent stall
   into a detectable, recoverable timeout — and ONLY for that — after dispatching
@@ -331,10 +333,9 @@ prompt: |
   - If a running sub-agent is clearly wrong, runaway, superseded, or no longer
     useful, cancel it instead of leaving it running while you re-dispatch. Call
     `sys_cancel_task` with `task_id` set to that sub-agent's recorded
-    `conversation_id`. `explorer`, `builder`, and `drone` (claude-native) are
-    hard-stopped and will wake you with a cancelled inbox item; `reviewer`
-    (codex-native) cancellation is currently best-effort, so do not assume its
-    worker is gone unless the tool result or inbox confirms it.
+    `conversation_id`. All four workers run the `opencode` harness; cancellation
+    may be best-effort, so do not assume a cancelled worker is gone unless the
+    tool result or inbox confirms it.
     Also cancel any outstanding watchdog timer for that wave with
     `sys_timer_cancel`.
   - Do not repeatedly re-prompt a dark or failing sub-agent. For coding work,
@@ -382,9 +383,9 @@ terminals:
         type: none
 
 tools:
-  # Coding sub-agents — see agents/<name>/. explorer, builder, and drone are
-  # Claude-native CLI harnesses; reviewer is a Codex-native cross-vendor
-  # reviewer.
+  # Coding sub-agents — see agents/<name>/. All four run the opencode harness;
+  # explorer/builder/drone implement and explore, reviewer is the cross-vendor
+  # reviewer (a different model vendor than the implementers).
   agents:
     - explorer
     - builder

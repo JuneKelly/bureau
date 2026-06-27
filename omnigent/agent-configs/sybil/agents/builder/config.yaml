@@ -2,8 +2,8 @@ spec_version: 1
 name: builder
 description: >-
   Primary implementation sub-agent — dispatched for substantial coding tasks:
-  multi-file changes, refactors, new features, test writing. Runs Claude on
-  opus-4-8 for complex reasoning. Drives changes to green and commits.
+  multi-file changes, refactors, new features, test writing. Runs Deepseek v4
+  Pro for complex reasoning. Drives changes to green and commits.
 
 executor:
   type: omnigent

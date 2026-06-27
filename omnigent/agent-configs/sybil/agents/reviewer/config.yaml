@@ -2,17 +2,14 @@ spec_version: 1
 name: reviewer
 description: >-
   Cross-vendor review sub-agent — verifies builder/drone diffs against their
-  acceptance contracts. Runs on Codex (GPT-5.5) to provide independent,
+  acceptance contracts. Runs GLM 5.2 (Z-AI) to provide independent,
   different-vendor verification. Reports issues; never edits code.
 
 executor:
   type: omnigent
   config:
     harness: opencode
-    # YOLO: headless workers can't answer approval prompts, so run Codex
-    # with full bypass. The server translates this into
-    # ``--dangerously-bypass-approvals-and-sandbox`` (native sub-agents only).
-    # yolo: true
+    permission_mode: auto
 
 prompt: |
   You are a review sub-agent dispatched by the sybil orchestrator to verify
