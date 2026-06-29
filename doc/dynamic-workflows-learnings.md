@@ -1,8 +1,16 @@
 # Dynamic workflows in Omnigent — lessons learned from a live run
 
-Status: **empirical findings** from the first end-to-end execution of the
+Status: **empirical findings** from end-to-end executions of the
 plan-as-code fan-out described in `doc/dynamic-workflows-feasibility.md`.
 Companion to that doc, not a replacement.
+
+> **Two execution sessions are recorded here.** Session 1 (below, §1–§6) was a
+> 5-task fan-out that flushed the *delivery/timing/wire* pack and produced the
+> **v2** skill. Session 2 (§7) re-ran the fan-out **at N=12**, flushed the next
+> pack — a concurrency-timing **`idle`-overload race** that a one-task canary
+> cannot see — and produced the **v3** started-gate fix, now confirmed green
+> (12/12). Read §7 for the current state; §1–§6 are the still-valid Session-1
+> record.
 
 Relationship to the feasibility doc: that doc is a **static read** — its §10 says
 plainly "this design rests on a static read of code on this branch; nothing was
@@ -194,6 +202,36 @@ treat live wire-shape confirmation against `openapi.json` + the server source as
 *mandatory* step, not advisory. The skill keeps the httpx approach but now hard-codes the
 verified shapes and flags the two historically-variable spots.
 
+### 2.8 `status` `idle` is overloaded — completion can't be read from status alone (found at N=12, Session 2)
+
+The single biggest Session-2 finding, and a *pure* concurrency-timing defect that the
+5-task Session-1 run never exposed. The v2 skill's `wait_and_read` treated the **first**
+non-`running` status as "done" — and `idle` is **overloaded**: a freshly-created REST child
+reports `idle` *before* its seeded turn is dispatched, **and** `idle` again *after* the turn
+finishes. At N=12 the poller caught all twelve children at their **pre-dispatch `idle`**,
+captured inert shells (only the seed item, **0 assistant messages, `last_total_tokens` /
+`total_cost_usd` = `None`, `host_id` = `None`, `last_task_error` = `None`** — it fails
+*silently*), returned `""`, and deleted them. **Result: 0/12 answers — not a model failure;
+the workflow declared victory before the work started.**
+
+**Why Session 1 missed it.** N=1 (and even N=5, on a warm host) almost always *wins* the
+dispatch race — the child has begun running by the time the first poll lands, so the first
+observed status is already `running`/post-run. The *same code* loses **uniformly** at N=12,
+where every child is polled in the window before its turn dispatches. **Meta-finding: a
+one-task canary cannot validate a concurrency pipeline** — the worst failure mode is
+timing-dependent and a single task hides it. (Confirmed by direct contrast: the Session-1
+N=1 canary genuinely ran — 17,230 tokens, returned `'one'`; the v2 N=12 run failed all twelve.)
+
+**The fix (v3 started-gate).** Accept `idle` as terminal **only once the turn provably ran**:
+the poller observed `status == "running"` at least once, OR an assistant message is already
+present in `/items`. A child stuck in pre-dispatch `idle` keeps polling and **fails loud at
+the deadline** instead of returning an empty "success." See §7 for the confirming re-run.
+
+**Lesson.** Completion is a *started-and-finished* predicate, not a single status read. Any
+client of this REST surface must implement a started-gate until the server emits a distinct
+pre-dispatch state (see §5 recommendation 4). And validate fan-out pipelines at **N≥3**, never
+N=1.
+
 ---
 
 ## 3. The meta-lesson
@@ -210,6 +248,7 @@ single thing that bit us in execution was a *dynamic* property no static read su
 | SSE can't signal completion (§2.4) | await semantics + no-replay | partially (route is readable; the *race* is not) |
 | `OMNIGENT_SESSION_ID` absent in shell (§2.5) | env propagation | invisible |
 | title collision → 500 (§2.6) | re-run idempotency | partially |
+| `idle` overloaded → first-idle-wins race (§2.8, Session 2) | concurrency-timing / status semantics | invisible (needs N≥3 to even surface) |
 
 This validates the feasibility doc's own §10 caveat and its §8 "to verify in the PoC" list
 — and argues that the *next* increment of confidence comes only from execution, not more
@@ -238,6 +277,15 @@ this session to encode every lesson above:
 - **Fail-loud wire checks**: any non-2xx prints method + URL + request body + response
   body.
 
+### 4.1 Folded in Session 2 (v3)
+
+- **Started-gate in `wait_and_read`** (§2.8): accept `idle` as terminal only after the turn
+  provably ran (saw `running`, or an assistant message exists); a never-dispatched child
+  **fails loud at the deadline** rather than returning an empty success. The Procedure now
+  states "Completion is NOT merely `status != \"running\"`" and carries a **"Validate at
+  N≥3, never N=1"** callout; the template docstring is bumped to `v3` and gains an "`idle`
+  is overloaded" platform-wart note.
+
 ---
 
 ## 5. Recommendations for the design / a v2 build
@@ -253,6 +301,11 @@ feasibility doc's "parenting is free, children persist and nest" vision honestly
 2. **Stop infinitely retrying an undeliverable terminal status.** `missing_work_entry`
    should drop/no-op or back off, not storm.
 3. **Return a typed `409` on `(parent, title)` collision**, not a generic 500 (§2.6).
+
+4. **Emit a distinct pre-dispatch state** (e.g. `created`/`queued`) before a child's first
+   turn dispatches, so clients can tell "not started" from "done" directly and drop the
+   §2.8 started-gate workaround. This is **net-new from Session 2**; today `idle` conflates
+   both.
 
 And carry forward the feasibility doc's still-valid open items, now with execution context:
 
@@ -272,15 +325,89 @@ And carry forward the feasibility doc's still-valid open items, now with executi
 Higher than the feasibility doc on the things it touches, because they were executed — and
 silent on the rest:
 
-- **High (observed directly, this session):** the core thesis; parented create + nesting +
+- **High (observed directly, Session 1):** the core thesis; parented create + nesting +
   parent-delegated read; the `missing_work_entry` delivery storm; cold-boot timeout
   behavior; SSE no-replay/idle-is-presence; `OMNIGENT_SESSION_ID` absent in shell; title
   collision → 500; the corrected wire shapes; teardown quiesces the storm.
-- **Unconfirmed (not exercised):** behavior at scale (≤16 concurrent, hundreds total);
-  per-run caps; the hardened egress/credential sandbox; long-run resumability and token
-  refresh; non-`explorer` workers; auth-enabled / multi-user servers (only the 401 bail
-  path was seen, not a working authenticated run).
+- **High (observed directly, Session 2):** the `idle`-overload first-idle-wins race at N=12
+  (§2.8); the v3 started-gate closes it; **a concurrency pipeline at N=12 runs correctly
+  and uniformly** (12/12, each child a real assistant turn at ~17.7k tokens — see §7);
+  capture-before-teardown is a working forensic primitive; teardown leaves no orphans at
+  N=12 (deleted child → 404, parent `child_sessions` → 0).
+- **Unconfirmed (not exercised):** behavior at the upper ceiling (toward 16 concurrent,
+  hundreds total); per-run caps; the hardened egress/credential sandbox; long-run
+  resumability and token refresh; non-`explorer` workers; auth-enabled / multi-user servers
+  (only the 401 bail path was seen, not a working authenticated run).
 
-A natural next probe: a larger fan-out (closer to the 16-concurrent ceiling) to exercise
-caps and host load, and a run that captures child transcripts before teardown to confirm
-the persistence/teardown trade-off (§2.2) is acceptable for review-style workflows.
+The "natural next probe" Session 1 proposed — a wider fan-out that captures child
+transcripts before teardown — **was Session 2** (§7); it confirmed the persistence/teardown
+trade-off (§2.2) is fine for review-style workflows and flushed the §2.8 race. The next
+probe from here pushes toward the 16-concurrent ceiling to exercise caps and host load.
+
+---
+
+## 7. Session 2: the N=12 confirming re-run (v3 started-gate)
+
+**Setup.** Probe regenerated **from the v3 template** (the v2 `probe12.py` was *not* reused —
+it still carried the first-idle-wins poller), 12 throwaway `explorer` children each seeded
+`"reply with ONLY the lowercase english word for {i}"`, parent session id injected via
+`OMNIGENT_PARENT_SESSION_ID`, capture-before-teardown retained. Pre-run gates all green:
+server `GET /v1/me` → 200; the Skill tool served **v3** (docstring `runner (v3)`,
+`saw_running` started-gate, the N≥3 callout); `POST /v1/sessions` create body re-confirmed
+against the live `openapi.json` (the create body is hidden from the schema, so it was taken
+as empirically proven from Session 1's successful creates).
+
+**Result: 12/12 correct** (`one`…`twelve`), exit 0. Per-child captures show the
+**genuine-run signature** uniformly — exactly **1 assistant message** and **~17,700 tokens**
+each (consistent with Session 1's working N=1 canary at 17,230; the precise inverse of the
+v2 inert signature of 0 assistant messages / `None` tokens). Teardown verified clean: a
+deleted child returns **404** and the parent's `child_sessions` lists **0** — no orphans.
+
+| Metric | v2 at N=12 (Session 1 diagnosis) | v3 at N=12 (Session 2) |
+|---|---|---|
+| Correct words | 0/12 | **12/12** |
+| Assistant msgs / child | 0 (inert) | **1** |
+| Tokens / child | `None` | **~17,700** |
+| Failure mode | silent empty "success" | n/a (would now time out **loud**) |
+| Orphans after run | none (teardown fired) | **none** (404 / 0 children) |
+
+**What this nails down.** The race in §2.8 is closed: every child was polled past its
+pre-dispatch `idle` until its seeded turn provably ran. The started-gate is not just
+defensive — it converts the worst-case (a never-dispatched child) from a silent `0/N` into
+a **loud timeout**, so a future genuine stall is detectable rather than papered over. One
+benign capture note: `host_id` reads `None` in the *post-run* snapshot because the host
+releases when the turn finishes; the decisive "it ran" signals are the assistant message
+and the token count, both solid across all 12.
+
+---
+
+## 8. Viability verdict — are Claude-Code-style dynamic workflows viable in Omnigent?
+
+**Yes, in three tiers — and Tier 1 is now proven *and* concurrency-verified.**
+
+- **Tier 1 — local throwaway fan-out (the shipped v3 skill): VIABLE, verified.** The
+  mechanism (parented create → seed-at-create → parallel poll → capture → teardown) works,
+  and after the v3 started-gate it works **correctly under concurrency at N=12**, not just
+  at the N=1 canary that gave false confidence (§2.8, §7). The honest caveats are scope, not
+  soundness: validated to N=12 (not yet the ~16 ceiling), `explorer`-only, local
+  single-user, no caps enforcement, run tied to one `sys_os_shell` call (no
+  background/resume). For wide read-only fan-outs on a local box, it is usable today.
+- **Tier 2 — persistent nested children, robust locally: ONE real fix away.** The blocker is
+  wart §2.1 / recommendation 1: REST-created parented children get no parent work-entry, so
+  they can't deliver completion and the runner retry-storms. Today's workaround is mandatory
+  teardown (which forfeits persistence). Registering a work-entry on REST create — or marking
+  such children "externally tracked, no parent delivery" — would let children **nest *and*
+  persist *and* deliver**, dropping both the teardown and the started-gate-as-only-signal.
+  This is a genuine build item, not a skill tweak.
+- **Tier 3 — secure / multi-user / at-scale: DEFERRABLE, designed but unexercised.** The
+  hardened sandbox (credential-proxy + egress allowlist, capability-scoped token) from
+  feasibility §3.1 is design-only; the §1.5 401-bail proves Tier 1 won't run multi-user as-is.
+  Right target for any shared deployment, not needed for the local single-user use case the
+  skill serves.
+
+**Bottom line.** The meta-lesson holds end to end: *the static read was flawless on
+structure, blind on lifecycle, and lifecycle surprises travel in packs.* Session 1 flushed
+the delivery/timing/wire pack; Session 2's N=12 run flushed the concurrency pack (the
+`idle`-race) **exactly as the "validate at N≥3" instinct predicted**. Tier 1 has now
+survived the probe that was designed to break it. The single highest-leverage next build is
+Tier-2's work-entry fix; the next *probe* is a push toward the concurrency ceiling.

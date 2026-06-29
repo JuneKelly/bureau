@@ -81,9 +81,16 @@ server**:
      `content`. Assistant `content` is a list of parts with `type:"output_text"`
      (`{"type":"output_text","text":"…"}`). Role/content are NOT nested under a
      `data` key on this endpoint.
-   - **Completion** = the session snapshot `GET /v1/sessions/{id}` reports
-     `status != "running"`. Terminal-good is **`idle`** (not `"completed"`);
-     `status == "failed"` carries `last_task_error`.
+   - **Completion is NOT merely `status != "running"`.** `status` `idle` is
+     **overloaded**: a freshly-created REST child reports `idle` *before* its
+     seeded turn is dispatched, and reports `idle` again *after* the turn
+     finishes. Accept `idle` as terminal **only once the turn has provably run** —
+     you observed `status == "running"` at least once, OR an assistant message is
+     already present in `/items`. A child stuck in the pre-dispatch `idle` must
+     fail **loud** at the timeout, never return an empty "success".
+     `status == "failed"` carries `last_task_error`. (The template's
+     `wait_and_read` implements exactly this started-gate — do not regress it to
+     "first non-running == done".)
 2. **Write `workflow.py`** (template below) into a scratch dir, e.g.
    `.sybil/workflows/<slug>.py`. Fill in: the worker `sub_agent_name`, the list of
    per-task prompts, and the synthesis step.
@@ -93,6 +100,13 @@ server**:
    failed request + response body); the parallel fan-out never enters your context.
 4. **Report the synthesized answer** to the operator. The program tears down its
    own children, so the Subagents panel returns to clean when it finishes.
+
+> **Validate at N≥3, never at N=1.** This pipeline's worst failure mode — a child
+> captured at its pre-dispatch `idle` — is concurrency-timing-dependent: a single
+> task almost always wins the dispatch race and looks green, then the *same code*
+> loses uniformly at N=12 (every child polled before its turn dispatches). A
+> one-task canary gives **false confidence**; smoke-test with at least 3 concurrent
+> tasks before trusting a wide fan-out.
 
 Do not poll or babysit — the program joins its own children and returns when done.
 
@@ -113,7 +127,7 @@ is mandatory here, not optional hygiene.
 
 ```python
 #!/usr/bin/env python3
-"""Deterministic dynamic-workflow runner (v2). Drives PARENTED sub-agent sessions
+"""Deterministic dynamic-workflow runner (v3). Drives PARENTED sub-agent sessions
 over the local Omnigent REST API, fans them out in parallel, holds all
 intermediate state here, and prints ONLY the final synthesized answer to stdout.
 
@@ -126,6 +140,12 @@ Design (see SKILL.md for the why):
     GET /stream is a live tail that does NOT replay history (and its `idle` flag is
     a presence flag, not a completion signal), so an SSE waiter that connects after
     completion misses it and hangs. Re-reading the snapshot has no connect-race.
+  * Status 'idle' is AMBIGUOUS: a freshly-created REST child reports 'idle' BEFORE
+    its seeded turn is dispatched, and 'idle' again AFTER it finishes. wait_and_read
+    accepts 'idle' as terminal ONLY once the turn provably ran (it saw 'running', or
+    an assistant message exists); otherwise it keeps polling and fails loud at the
+    deadline. Treating the FIRST 'idle' as done silently returns empty results and
+    loses uniformly under concurrency (N=1 wins the dispatch race; N=12 loses it).
   * Every spawned child is DELETED in a `finally` as soon as its result is captured
     (B-1b teardown), so undeliverable terminal-status retries can't storm the runner.
 """
@@ -255,24 +275,44 @@ def _assistant_text(items: list[dict]) -> str:
 
 
 async def wait_and_read(client, child: str) -> str:
-    """Poll the child's snapshot until its turn leaves 'running', then read the final
-    assistant text. 'failed' => raise with last_task_error; timeout => raise."""
+    """Poll the child's snapshot until its seeded turn has DEMONSTRABLY run, then
+    read the final assistant text.
+
+    Why not "first non-running status == done"? A freshly-created REST child
+    reports status 'idle' BEFORE its seeded turn is dispatched, and 'idle' again
+    AFTER it finishes -- 'idle' is overloaded. Treating the first 'idle' as
+    terminal (the v2 bug) captures an inert child (only the seed, no assistant,
+    0 tokens, host_id None) and returns '' SILENTLY; under concurrency this loses
+    uniformly (N=1 wins the dispatch race, N=12 loses it). So accept 'idle' as
+    terminal ONLY once the turn provably ran: we observed 'running', OR an
+    assistant message already exists. A child that never dispatches bottoms out at
+    the deadline and fails LOUD instead of as an empty 'success'.
+    """
     deadline = time.monotonic() + PER_CHILD_TIMEOUT_S
+    saw_running = False
     while time.monotonic() < deadline:
         await asyncio.sleep(POLL_INTERVAL_S)
         url = f"{BASE}/v1/sessions/{child}"
         snap = _check(await client.get(url, headers=HEADERS), method="GET", url=url).json()
         status = snap.get("status")
         if status == "running":
+            saw_running = True
             continue
         if status == "failed":
             raise WireError(
                 f"child {child} failed: {snap.get('last_task_error') or '(no detail)'}"
             )
+        # Non-running, non-failed (typically 'idle'): disambiguate not-started vs done.
         items_url = f"{BASE}/v1/sessions/{child}/items?order=desc&limit=20"
         r = _check(await client.get(items_url, headers=HEADERS), method="GET", url=items_url)
-        return _assistant_text(r.json().get("data", []))
-    raise WireError(f"child {child} timed out after {PER_CHILD_TIMEOUT_S:.0f}s")
+        text = _assistant_text(r.json().get("data", []))
+        if text or saw_running:
+            return text
+        # Pre-dispatch 'idle': the seeded turn hasn't started yet -- keep polling.
+    raise WireError(
+        f"child {child} never ran its seeded turn within {PER_CHILD_TIMEOUT_S:.0f}s "
+        "(stuck in pre-dispatch 'idle'; see the REST-create work-entry wart below)"
+    )
 
 
 async def run_task(client, sem, agent_id, idx, prompt) -> str:
@@ -335,6 +375,11 @@ if __name__ == "__main__":
 
 ## Known server warts worth filing (so a v2 can drop the workarounds)
 
+- **`status` `idle` is overloaded** (pre-dispatch vs finished), so completion
+  cannot be read from status alone — the client must gate on "the turn provably
+  ran" (saw `running`, or an assistant message exists). A distinct
+  `created`/`queued` state emitted before first dispatch would let clients tell
+  "not started" from "done" directly, and drop the started-gate workaround.
 - **REST-created parented children get no parent work-entry.** `register_subagent_work()`
   is only called on the in-runner dispatch path, so REST-spawned parented children
   can't deliver terminal status and the runner retry-storms (`missing_work_entry`).
