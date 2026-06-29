@@ -20,8 +20,10 @@ without re-deriving everything. This is a working-state snapshot, not a design d
 - **Last commit:** `d47439b` — "dynamic-workflow: v3 started-gate confirmed green at
   N=12". Bundles the v3 `SKILL.md` with its validation writeup. Branch is **ahead 1 of
   origin, not pushed** (re-verify with `git status -sb` — don't assume).
-- **Server:** local omnigent at `http://127.0.0.1:6767`. Auth is **off** here
-  (`GET /v1/me` → 200, `accounts_enabled=False`) — single-user local only.
+- **Server:** local omnigent at `$RUNNER_SERVER_URL` — **read the base URL from that env
+  var; do NOT hardcode a port.** It changes per launch (e.g. this session it was
+  `http://127.0.0.1:51512`; an earlier session's `6767` was stale and wasted a check). Auth
+  is **off** here (`GET /v1/me` → 200, `accounts_enabled=False`) — single-user local only.
 - **sybil agent_id (last session):** `ag_2d6ad8a72baf417b88317ca6bf724d46` (v3-bound).
 - **Roster note:** last session `claude` was on PATH (explorer/builder/drone available)
   but **`codex` was NOT** (reviewer unavailable). **This session's task is a real code
@@ -40,8 +42,10 @@ learnings §7; verdict in §8. Scratch probe `.sybil/workflows/probe12_v3.py` is
 
 ## Start-of-session checks (silent plumbing — only report problems)
 
-- **Server up?** `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:6767/v1/me`
-  must be `200`. If down (`000`), STOP and tell Junebug.
+- **Server up?** `curl -s -o /dev/null -w '%{http_code}' "$RUNNER_SERVER_URL/v1/me"`
+  must be `200` (base URL from `$RUNNER_SERVER_URL` — never hardcode a port). If down
+  (`000`), first re-check `$RUNNER_SERVER_URL` is set/current; if still down, STOP and tell
+  Junebug.
 - **Roster preflight:** `command -v claude codex || true`. Record the available set.
   `codex` missing ⇒ no cross-vendor review this run (see roster note above).
 - **Skill is v3?** (lighter check than last session — this session edits *runner code*,
