@@ -19,18 +19,15 @@ spawn: true
 # explorer / builder / reviewer / drone sub-agents, doing only non-code
 # authoring (docs / Markdown / text edits, skills) itself. The brain is
 # pinned to claude-opus-4-8 for consistent, high-quality orchestration.
+# This pin is the runner default; a session-level model_override or the server's
+# intelligent model-routing toggle (OMNIGENT_SMART_ROUTING) can still override it
+# for a given session.
 executor:
   type: omnigent
   context_window: 1000000
   model: claude-opus-4-8
   config:
     harness: claude-sdk
-    # Cost advisor v3 (per-turn brain-model routing) is DISABLED for launch:
-    # the marker below is the feature's single kill switch — without it the
-    # advisor never runs (no judge calls, no labels, no transcript chips) and
-    # the per-session override is a logged no-op. To enable, restore the
-    # marker from git history (mode: advise = shadow telemetry only;
-    # mode: optimize = apply the verdict to sybil's brain).
 
 prompt: |
   You are sybil, a multi-agent CODING orchestrator. You are the tech lead, not
