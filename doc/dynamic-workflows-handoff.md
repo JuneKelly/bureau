@@ -3,8 +3,11 @@
 **Purpose:** entry point for a fresh session. The **persistence test is DONE and green**
 (Session 3): a real N=5 `explorer` fan-out ran with persistence on against the Fix-4 server
 and hit all four success signals. The **v5** skill shipped (two new client-side lifecycle
-fixes), and the learnings doc is folded in. This file is a working-state snapshot + the next
-goal, not a design doc.
+fixes), and the learnings doc is folded in. **Session 4** then did a quick lean re-validation
+(N=4 joke fan-out, all signals green on the current `6767` server) and surfaced an
+*orchestrator-discipline* lesson — the pipeline is mature, so the remaining waste is sybil
+wrapping each run in QA ceremony; the skill gained a **"Run lean"** section in response
+(learnings §10). This file is a working-state snapshot + the next goal, not a design doc.
 
 **Read these first (in order):**
 1. `doc/dynamic-workflows-learnings.md` — the empirical record. **§9 (Session 3) is the
@@ -38,7 +41,16 @@ goal, not a design doc.
   - Template bumped **v4 → v5**; compiles clean; Procedure + warts sections updated.
 - ✅ **Learnings folded in.** Added §2.9, §2.10, §9; reframed §2.1/§2.2 (teardown optional);
   moved §8 Tier-2 from "one fix away" → **DONE (persistence verified N=5)**.
-- 🎯 **Next session — two candidate goals (pick one), detailed below:**
+- ✅ **Session 4 — lean re-validation + skill discipline fix.** N=4 `explorer` joke fan-out
+  ran 4/4 green first try on the `6767` server (all four persisted, ~30.6–31.5k tokens each,
+  0 storm signatures) — v5 template unchanged, no new pipeline defect. The finding was about
+  **sybil's own behavior**: the run was buried in pre/post-run verification ceremony (manual
+  `preflight()` duplication, three post-run snapshot/storm shell calls, narration) that
+  defeats plan-as-code. Fix (prose only): a **"Run lean — keep the orchestrator quiet"**
+  section in `dynamic-workflow/SKILL.md` + a stale step-4 teardown line corrected; recorded as
+  learnings §10. **No code, no template change.**
+- 🎯 **Next session — two candidate goals (pick one), detailed below** (Session 4 was a
+  side-quest; A and B are still the real next steps):
   **(A)** *Concurrency-ceiling probe* (skill `dynamic-workflow`, no code) — push toward ~16
   concurrent / hundreds total to exercise host load and the still-absent per-run cap.
   **(B)** *Tier-2 delivery build* (runner **code** → `builder` + Codex `reviewer`) — register
@@ -83,10 +95,13 @@ Close the one remaining Tier-2 gap so children **deliver** (not just persist). T
 ## Two repos (this work spans both)
 
 - **Bureau — skill/docs/learnings:** `/Users/junek/bureau`. Branch **`dynamic-workflow`**
-  (tracks `origin/dynamic-workflow`). **This session's changes (committed locally, not
-  pushed):** `omnigent/agent-configs/sybil/skills/dynamic-workflow/SKILL.md` → **v5**, plus
-  `doc/dynamic-workflows-learnings.md` (§2.9/§2.10/§9 + reframes) and this handoff. See
-  `git log` for the commit.
+  (tracks `origin/dynamic-workflow`). **Session 4 changes (committed locally, not pushed):**
+  `omnigent/agent-configs/sybil/skills/dynamic-workflow/SKILL.md` gained a **"Run lean"**
+  section + a stale step-4 teardown-line fix (template still **v5**, unchanged);
+  `doc/dynamic-workflows-learnings.md` gained **§10** (Session 4); and this handoff updated.
+  Prior (Session 3) changes — the v5 template + learnings §2.9/§2.10/§9 — are already in
+  earlier commits. See `git log` for the commits. The scratch run artifact
+  `.sybil/workflows/joke-test.py` is git-ignored (the skill template is the canonical source).
 - **Fork — runner code:** `/Users/junek/workspace/omnigent`. `origin = JuneKelly/omnigent`,
   `upstream = omnigent-ai/omnigent`. Branch **`sybil/dynamic-workflows`** (off clean `main`).
   Holds Fix 4 + items A/B from prior sessions (`3591e95a`, `7ec56330`, `b376ccdd`).

@@ -102,8 +102,10 @@ server**:
    `sys_os_shell("OMNIGENT_PARENT_SESSION_ID=<your conv id from sys_session_get_info> python3 .sybil/workflows/<slug>.py")`.
    The program prints **only** the final answer to stdout (stderr carries any
    failed request + response body); the parallel fan-out never enters your context.
-4. **Report the synthesized answer** to the operator. The program tears down its
-   own children, so the Subagents panel returns to clean when it finishes.
+4. **Report the synthesized answer** to the operator, and stop. That answer — the
+   program's stdout on exit 0 — IS the result; do not chase it with a verification
+   lap. With persistence on (the default) the children stay nested in the Subagents
+   panel for inspection; with `TEARDOWN = True` the tree returns to clean on its own.
 
 > **Validate at N≥3, never at N=1.** This pipeline's worst failure mode — a child
 > captured at its pre-dispatch `idle` — is concurrency-timing-dependent: a single
@@ -113,6 +115,36 @@ server**:
 > tasks before trusting a wide fan-out.
 
 Do not poll or babysit — the program joins its own children and returns when done.
+
+### Run lean — keep the orchestrator quiet
+
+The whole point of plan-as-code is that the orchestrator makes **one decision**
+(write + launch) and the *program* owns everything else. A faithful run is ~3 tool
+calls and almost no chatter:
+
+1. Read your own session id once (`sys_session_get_info`).
+2. Author `workflow.py`.
+3. Launch it; report its stdout.
+
+Resist these ceremony traps — each one drags state back into the orchestrator's
+context, which is exactly what this skill exists to avoid (it turns a plan-as-code
+run back into turn-by-turn "agent teams"):
+
+- **Don't re-validate the skill on a known-good server.** Post-run `child_sessions`
+  counts, per-child token/`status` snapshots, and runner-log storm greps were how
+  the *learnings sessions* flushed lifecycle bugs — that is QA **of the pipeline**,
+  not part of **running** a workflow. The program's clean stdout + exit 0 already
+  means it worked. Only inspect child state when the program **fails loud**
+  (non-zero exit, or a `--> TASK n FAILED` on stderr).
+- **Don't duplicate `preflight()`.** The program already probes `GET /v1/me`
+  (`401` ⇒ bail) and checks `OMNIGENT_PARENT_SESSION_ID`. A manual `curl /v1/me`
+  or openapi-paths dump before launching is redundant — do it only if you actually
+  suspect the server version changed (Procedure step 1).
+- **Don't narrate each step.** Announce the run once, launch, report the answer.
+
+This v1's shell-out launch model (`sys_os_shell` blocks until the program returns)
+means the blocking call *is* the wait — there is nothing to poll. The leaner the
+orchestrator's turn, the closer this sits to the real dynamic-workflows goal.
 
 ### Persistence and teardown (B-1b)
 

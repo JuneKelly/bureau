@@ -519,3 +519,48 @@ static read could never show — consistent with the meta-lesson and with "lifec
 travel in packs": Session 1 flushed delivery/timing/wire, Session 2 the dispatch-edge `idle`
 race, Session 3 the finish-edge settle-race + transport noise. The remaining Tier-2 gap is
 delivery-only (REST create still registers no work-entry); persistence no longer needs it.
+
+---
+
+## 10. Session 4: a lean joke fan-out — and the orchestrator-ceremony lesson
+
+**Setup.** A throwaway "run another workflow test" at the operator's request: N=4 `explorer`
+children, each seeded a tight prompt to invent one original short joke on a distinct theme
+(programming / animals / outer space / coffee), `TEARDOWN = False`, parent id injected via
+`OMNIGENT_PARENT_SESSION_ID`. Server this session was `http://127.0.0.1:6767` (the base URL is
+NOT fixed — read `$RUNNER_SERVER_URL`; Session 3 was `54533`), `GET /v1/me` → 200 (local
+single-user). v5 template, unchanged. Run via `uv run --with httpx python3 …` (httpx still not
+preinstalled).
+
+**Result: 4/4, green on every signal, first try.** Each child returned a real joke mapped to
+its theme; the program printed only the synthesized 4-section set (the fan-out never entered
+the orchestrator's context). Per-child genuine-run signature held uniformly: all `idle`,
+**~30.6–31.5k tokens**, 1 assistant message, `last_task_error` None; all four persisted in
+`child_sessions`; **0** storm signatures in the runner log (Fix 4 holding). No new *pipeline*
+defect — the v5 template ran exactly as documented at N=4 (≥3, per the §2.8 rule).
+
+**The finding this session is about the ORCHESTRATOR, not the program.** The run worked, but
+sybil wrapped it in ceremony that defeats the point of plan-as-code: a manual `curl /v1/me` +
+openapi-paths dump *before* launch (duplicating the program's own `preflight()`), and **three**
+post-run shell calls (a `child_sessions` count, a per-child token/`status` snapshot, a
+runner-log storm grep) — two of which broke on shell-quoting and needed retries — plus
+narration between each. That is precisely the turn-by-turn, state-in-the-orchestrator's-context
+mode the skill exists to replace; the program's clean stdout + exit 0 was already the proof of
+success. The verification reflex is a hangover from Sessions 1–3, where every run was *flushing
+lifecycle bugs* — but that is QA **of the pipeline**, not **running** a workflow. On a
+known-good v5 server it is pure context bloat.
+
+**The fix (skill prose, this session).** Added a **"Run lean — keep the orchestrator quiet"**
+subsection to `dynamic-workflow/SKILL.md`: a faithful run is ~3 tool calls (read own session id
+→ author → launch + report stdout), with three explicit ceremony traps to resist (don't
+re-validate the skill on a known-good server; don't duplicate `preflight()`; don't narrate each
+step), and the note that this v1's `sys_os_shell` launch *blocks*, so the blocking call **is**
+the wait — there is nothing to poll. Also fixed a stale step-4 line that still claimed "the
+program tears down its own children" (false since persistence became the v5 default).
+
+**Lesson.** The pipeline is mature enough (v5; Tier-1 verified; Tier-2 persistence verified)
+that the dominant remaining inefficiency is no longer a *client/runtime* defect but
+**orchestrator discipline**: post-bug-flushing, the operator must stop QA-ing the pipeline on
+every run and let the program be the program. Verify only on a loud failure (non-zero exit / a
+`--> TASK n FAILED` on stderr). This is the first lesson here that targets sybil's own behavior
+rather than the REST surface or the template.
