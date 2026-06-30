@@ -2,7 +2,9 @@
 
 Status: **empirical findings** from end-to-end executions of the
 plan-as-code fan-out described in `doc/dynamic-workflows-feasibility.md`.
-Companion to that doc, not a replacement.
+Companion to that doc, not a replacement. §11 adds a **faithfulness audit** of
+the shipped skill against the stated goal — a different lens from the execution
+runs in §1–§10 (it grades the artifact, it does not flush a runtime defect).
 
 > **Three execution sessions are recorded here.** Session 1 (below, §1–§6) was a
 > 5-task fan-out that flushed the *delivery/timing/wire* pack and produced the
@@ -564,3 +566,73 @@ that the dominant remaining inefficiency is no longer a *client/runtime* defect 
 every run and let the program be the program. Verify only on a loud failure (non-zero exit / a
 `--> TASK n FAILED` on stderr). This is the first lesson here that targets sybil's own behavior
 rather than the REST surface or the template.
+
+---
+
+## 11. Session 5: faithfulness audit — is the shipped skill a "close replica" of Claude Code dynamic workflows?
+
+**Setup.** A different kind of session: not an execution run that flushes a lifecycle bug,
+but a **faithfulness audit** of the shipped `dynamic-workflow` (v5) skill against the stated
+goal — *"a close replica of dynamic workflows as they appear in Claude Code."* Two independent
+read-only lenses (both `explorer`/opus, cross-checked, no LLM in the dispatch loop): Lens A
+scored the skill property-by-property against Claude Code's seven defining properties
+(feasibility §1); Lens B assessed the gap between the feature's *runtime shape* and what the
+skill actually instructs sybil to do. The two lenses converged with no material disagreement.
+
+**Verdict: a faithful replica of the *thesis*, a Tier-1 PoC of the *feature*.** The skill
+nails the irreducible core — plan-as-code, deterministic dispatch, all intermediate state held
+in program variables, one synthesized answer returned — and that core is empirically green (to
+N=12). But it diverges from or is silent on **four of the seven** defining properties.
+
+**The seven-property scorecard:**
+
+| Claude Code property | Rating | Evidence |
+|---|---|---|
+| P1 — plan in code; context sees only the final answer | **Faithful** | `print(synthesize(list(outcomes)))`; "the parallel fan-out never enters your context." |
+| P2 — the *script* decides what runs next (deterministic) | **Faithful** | `asyncio.gather` over a fixed task list + semaphore; no LLM in the dispatch loop. |
+| P3 — scale dozens–hundreds; caps ≤16 concurrent / 1000 total | **Partial** | `MAX_CONCURRENCY` is an editable local semaphore enforced by nobody; no 1000-total cap; validated only to N=12. Caps are convention, not guarantee. |
+| P4 — quality patterns (cross-review, multi-angle) codified in code | **Divergent** | Named as use-cases, but `synthesize()` is a stub string-join; no agent reviews another in the template. |
+| P5 — background + resumable; completed agents cached | **Absent** | "No background/resume." A host process can't inherit the durable loop's checkpoints — structurally unavailable, not merely unimplemented. |
+| P6 — script has NO FS/shell access; only agents do | **Divergent (biggest gap)** | Inverted: the program runs *via* `sys_os_shell` in sybil's ambient sandbox, full host FS/shell, no token. The secretless egress/credential sandbox (feasibility §3.1, the stated "crux") is unbuilt. |
+| P7 — invocation via `/<name>`+`args`; on-disk artifact | **Partial** | Artifact half met (real, re-launchable `.sybil/workflows/<slug>.py`); no saved `/command`, no global `args` — each run hand-edits in-file constants. |
+
+**The single biggest fidelity gap is P6 — the absent sandbox.** Claude's "the script itself has
+no direct filesystem or shell access; only the agents read/write/run" is load-bearing for the
+whole security model; the shipped skill ships the exact opposite (agent-authored code with full
+host reach), safe only by the accident of being local single-user. P4 (quality patterns as
+prose, not code) is the runner-up: the canonical Claude example — independent agents reviewing
+each other before findings report — has no analog in the template's `synthesize()` stub.
+
+**A launch-shape divergence worth recording (Lens B).** Beyond the property list: the v1 launch
+is a **blocking `sys_os_shell` call** that re-occupies the orchestrator's turn for the *entire*
+run — the opposite of the feature's "backgrounded durable task" shape (feasibility §3.4 step 2;
+the gap is already named in §2.5). It removes per-step *thinking* but not turn-*occupancy*. And
+the headline multi-vendor advantage (fan out across Claude/Codex/Cursor/Pi — "something Claude's
+single-vendor workflows cannot") is **unexpressed**: the template hard-codes `WORKER =
+"explorer"` and every validated run (§7, §9, §10) is explorer-only.
+
+**The skill is honest about all of this.** It labels itself v1, enumerates "What this v1
+deliberately does NOT do" (no sandbox / no caps / no background-resume / no auth), and points to
+"graduate to the first-class workflow feature" when the limits bite. The lone overclaim is the
+one-liner description ("the deterministic-program analog of Claude Code's dynamic workflows"),
+which a skimmer reads as stronger equivalence than the body delivers. **So the gap is not
+dishonesty; it is that the stated goal ("close replica") is a higher bar than the artifact's
+own modest self-claim ("Tier-1 PoC of the thesis").**
+
+**Path to a genuine "close replica"** (none shipped today; maps to the deferred items already
+in feasibility §4 and §5 recommendations): **P6** the hardened sandbox (egress allowlist +
+secretless `credential_proxy`, no FS/shell) — a runner/server build and the biggest piece;
+**P3** an enforced per-run cap ("the one real net-new"); **P5** runner-launched durable task +
+run-graph cache for background/resume; **P4** codify cross-review / multi-angle as real template
+patterns (the cheapest, skill-prose-only win); **P7** a saved `/command` + `args`. Tightening
+the over-strong one-liner description is a free correctness fix and the only one sybil authors
+directly — the rest are runner/server code (→ `builder` + Codex `reviewer`).
+
+**Lesson.** "Close replica" turned out to be the wrong yardstick for what shipped — and the
+skill never actually claimed it; the goal-as-stated outran the artifact's honest
+self-description. The shipped skill is the *thesis* proven (plan-as-code works; state stays out
+of context) on top of an unfinished server surface; the *feature's* guarantees (isolation,
+caps, resumability, codified quality patterns) are designed-but-unbuilt. This is the first
+session to audit the artifact against the goal rather than flush a runtime defect — and it
+relocates the remaining work from "more lifecycle bugs to find" to "four named
+feature-guarantee builds, P6 first."
