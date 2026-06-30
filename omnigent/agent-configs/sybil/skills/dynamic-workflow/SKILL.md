@@ -18,9 +18,10 @@ a **single deterministic Python program** that owns the whole loop:
 | Orchestrator cost | one LLM turn per step | one decision: write + launch |
 
 The program creates **parented** child sessions, so every spawned worker shows up
-under sybil in the Subagents panel exactly like a `sys_session_send` child — and
-**deletes each child as soon as its result is captured** (see "Why teardown"
-below).
+under sybil in the Subagents panel exactly like a `sys_session_send` child. By
+default those children **persist** after the run, so you can open each worker's
+transcript in the panel; teardown is an **opt-in** for throwaway fan-outs that
+want the tree to return to clean (see "Persistence and teardown" below).
 
 ## When to use
 
@@ -110,24 +111,31 @@ server**:
 
 Do not poll or babysit — the program joins its own children and returns when done.
 
-### Why teardown (B-1b)
+### Persistence and teardown (B-1b)
 
 Children created over **raw `POST /v1/sessions`** spawn and run correctly, but the
 REST create path does **not** register the parent-side "work entry" that the
-in-runner dispatch path (`sys_session_send`) creates. Without that entry, when a
-child finishes the runner cannot deliver its terminal status to the parent inbox
-and **retries forever** (`subagent_delivery_not_confirmed` / `missing_work_entry`),
-producing a runner log storm that contends with live work. This program never
-relies on inbox delivery (it reads each child's items directly), so it **deletes
-every child in a `finally` the moment its result is captured** — the undeliverable
-status has no surviving child to retry against. That is the whole reason teardown
-is mandatory here, not optional hygiene.
+in-runner dispatch path (`sys_session_send`) creates. So this program never relies
+on inbox delivery — it reads each child's items directly.
+
+Historically that missing work-entry was also why teardown was **mandatory**: when
+a child finished, the runner tried to deliver its terminal status to the (absent)
+parent inbox and **retried forever** (`subagent_delivery_not_confirmed` /
+`missing_work_entry`), storming the runner log against live work — and deleting each
+child was the only way to leave nothing for the storm to retry against.
+
+**That storm is now fixed at the runner.** A non-deliverable terminal status is
+**204-acknowledged** instead of returning 503, so a surviving completed child no
+longer triggers a retry-storm. Teardown is therefore **no longer required**, and
+this skill **persists children by default** (`TEARDOWN = False`) so review-style
+runs keep every worker's transcript in the Subagents panel. Set `TEARDOWN = True`
+only for throwaway wide fan-outs where you'd rather the tree return to clean.
 
 ## `workflow.py` template
 
 ```python
 #!/usr/bin/env python3
-"""Deterministic dynamic-workflow runner (v3). Drives PARENTED sub-agent sessions
+"""Deterministic dynamic-workflow runner (v4). Drives PARENTED sub-agent sessions
 over the local Omnigent REST API, fans them out in parallel, holds all
 intermediate state here, and prints ONLY the final synthesized answer to stdout.
 
@@ -146,8 +154,10 @@ Design (see SKILL.md for the why):
     an assistant message exists); otherwise it keeps polling and fails loud at the
     deadline. Treating the FIRST 'idle' as done silently returns empty results and
     loses uniformly under concurrency (N=1 wins the dispatch race; N=12 loses it).
-  * Every spawned child is DELETED in a `finally` as soon as its result is captured
-    (B-1b teardown), so undeliverable terminal-status retries can't storm the runner.
+  * Children PERSIST by default (TEARDOWN = False) so their transcripts stay
+    inspectable in the Subagents panel. The runner acknowledges an undeliverable
+    terminal status instead of 503-storming, so a surviving child is safe. Set
+    TEARDOWN = True for throwaway fan-outs that want the tree to return to clean.
 """
 import asyncio
 import os
@@ -177,6 +187,11 @@ MAX_CONCURRENCY = 12          # you are the governor — keep bounded (<= ~16)
 PER_CHILD_TIMEOUT_S = 900.0   # generous: N cold-booting harnesses are slow
 POLL_INTERVAL_S = 5.0         # gentle on the runner; do NOT hammer at 1-2s
 RUN_ID = uuid.uuid4().hex[:8]  # run-scoped => (parent,title) never collides
+
+# Persist children by default so their transcripts stay inspectable in the Subagents
+# panel; safe because the runner acknowledges an undeliverable terminal status instead
+# of 503-storming. Set True for throwaway fan-outs that want the tree to return to clean.
+TEARDOWN = False
 
 # Fill these in for the task at hand:
 TASKS: list[str] = [
@@ -321,7 +336,8 @@ async def run_task(client, sem, agent_id, idx, prompt) -> str:
         try:
             return await wait_and_read(client, child)
         finally:
-            await delete_child(client, child)  # B-1b: teardown the moment we're done
+            if TEARDOWN:  # B-1b: opt-in teardown; default persists for inspection
+                await delete_child(client, child)
 
 
 def synthesize(results: list[str]) -> str:
@@ -342,8 +358,9 @@ async def main() -> None:
                 return_exceptions=True,  # let every task run its own teardown finally
             )
         finally:
-            for child in list(SPAWNED):  # sweep anything a failure left behind
-                await delete_child(client, child)
+            if TEARDOWN:  # only sweep when tearing down; default leaves children up
+                for child in list(SPAWNED):  # sweep anything a failure left behind
+                    await delete_child(client, child)
 
     failures = [(i, o) for i, o in enumerate(outcomes) if isinstance(o, Exception)]
     if failures:
@@ -369,9 +386,10 @@ if __name__ == "__main__":
   no history replay (its `idle` param is a presence flag, not completion), so it
   has a connect-race that a batch waiter must not rely on. We poll the snapshot.
 - **No auth.** Local single-user only. `401` ⇒ stop and tell the operator.
-- **No persisted child transcripts.** Teardown deletes each child when done. If you
-  need the workers' full transcripts after the run, capture them in the program
-  before `delete_child` (e.g. write items to disk) — the default keeps the tree clean.
+- **Children persist by default.** With `TEARDOWN = False` (the default) every child
+  remains after the run, so you can open its transcript in the Subagents panel — safe
+  because the runner acknowledges an undeliverable terminal status instead of storming.
+  Set `TEARDOWN = True` for throwaway wide fan-outs that want the tree to return to clean.
 
 ## Known server warts worth filing (so a v2 can drop the workarounds)
 
@@ -382,12 +400,15 @@ if __name__ == "__main__":
   "not started" from "done" directly, and drop the started-gate workaround.
 - **REST-created parented children get no parent work-entry.** `register_subagent_work()`
   is only called on the in-runner dispatch path, so REST-spawned parented children
-  can't deliver terminal status and the runner retry-storms (`missing_work_entry`).
-  Fix upstream: register a work entry on REST create, OR mark such children
-  "externally tracked, no parent delivery" so forwarding is suppressed — then this
-  skill could keep children parented *and* persisted without teardown.
-- **The runner retries an undeliverable terminal status indefinitely.**
-  `missing_work_entry` should drop/no-op or back off, not storm.
+  still can't *deliver* terminal status to the parent inbox (the program reads items
+  directly instead). A fuller upstream fix would register a work entry on REST create,
+  OR mark such children "externally tracked, no parent delivery" — then inbox delivery
+  would work too, not just persistence.
+- **The runner retried an undeliverable terminal status indefinitely — FIXED.** A
+  non-deliverable `missing_work_entry`-class terminal status is now **204-acknowledged**
+  instead of returning 503, so it no longer storms; only a genuinely transient
+  `missing_parent_inbox` (entry present, not yet delivered) still retries. This is the
+  runner-side fix that lets this skill persist children by default.
 - **A sub-agent title collision returns 500, not 409.** Re-running with a duplicate
   `(parent, title)` raises `NameAlreadyExistsError` surfaced as a generic
   `internal_error`. Run-scoped titles dodge it here; the server should return a
