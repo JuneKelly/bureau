@@ -4,13 +4,16 @@ Status: **empirical findings** from end-to-end executions of the
 plan-as-code fan-out described in `doc/dynamic-workflows-feasibility.md`.
 Companion to that doc, not a replacement.
 
-> **Two execution sessions are recorded here.** Session 1 (below, §1–§6) was a
+> **Three execution sessions are recorded here.** Session 1 (below, §1–§6) was a
 > 5-task fan-out that flushed the *delivery/timing/wire* pack and produced the
 > **v2** skill. Session 2 (§7) re-ran the fan-out **at N=12**, flushed the next
 > pack — a concurrency-timing **`idle`-overload race** that a one-task canary
-> cannot see — and produced the **v3** started-gate fix, now confirmed green
-> (12/12). Read §7 for the current state; §1–§6 are the still-valid Session-1
-> record.
+> cannot see — and produced the **v3** started-gate fix, confirmed green (12/12).
+> Session 3 (§9) ran a real substantive N=5 fan-out **with persistence on** against
+> the Fix-4 server, flushed the *finish-edge* pack — the **`idle` settle-race**
+> (§2.9) and **empty-`str()` transport errors** (§2.10) — and produced the **v5**
+> skill, with all four persistence success signals green. Read §9 for the current
+> state; §7 and §1–§6 are the still-valid earlier records.
 
 Relationship to the feasibility doc: that doc is a **static read** — its §10 says
 plainly "this design rests on a static read of code on this branch; nothing was
@@ -111,6 +114,13 @@ work entry, a plan-as-code program **must not depend on inbox delivery** and mus
 results by polling child state — which is what the program already did, so the storm is a
 log/operational problem, not a correctness one.
 
+**Status update (Session 3): the storm is FIXED at the runner (Fix 4); persistence is now
+the default.** A non-deliverable terminal status is now **204-acknowledged** instead of
+503-returned, so a surviving completed child no longer storms the log. The work-entry is
+still not registered on REST create (so inbox *delivery* still doesn't happen — the program
+reads child items directly, exactly as before), but children can now safely **persist** after
+the run. The v5 skill sets `TEARDOWN = False` by default; teardown is opt-in for throwaway runs.
+
 ### 2.2 "Un-parent to avoid the storm" is infeasible — workers have no standalone agent
 
 The first instinct to kill the storm was to create children **top-level** (no parent →
@@ -121,6 +131,12 @@ real `explorer`" are mutually exclusive on this server. The chosen fix was there
 captured** (a `finally` teardown), so the undeliverable status has no surviving child to
 retry against. *(This is a workaround the feasibility doc's design would not need if the
 work-entry gap (§2.1) were closed — see §4.)*
+
+**Reframe (Session 3): teardown is no longer mandatory.** That delete-each-child workaround
+was only needed because the undeliverable status used to storm (§2.1). With Fix 4 the storm
+is gone, so keeping children parented **and alive** is safe — exactly what the v5 skill does
+by default (`TEARDOWN = False`), preserving every worker's transcript in the Subagents panel.
+Teardown survives only as an opt-in for throwaway fan-outs that want the tree to return clean.
 
 ### 2.3 Cold-boot timing dominates, and the waiter must be sized for it
 
@@ -232,6 +248,50 @@ client of this REST surface must implement a started-gate until the server emits
 pre-dispatch state (see §5 recommendation 4). And validate fan-out pipelines at **N≥3**, never
 N=1.
 
+### 2.9 The `idle` settle-race: status flips to `idle` BEFORE the answer is queryable (Session 3)
+
+A second, *trailing-edge* face of the §2.8 `idle` overload, found running a real N=5
+`explorer` fan-out (substantive multi-paragraph research, not the one-word toy). The v3/v4
+started-gate accepted `idle` as terminal once the turn had **provably run** (saw `running`,
+or an assistant message exists). But a child's `status` flips back to `idle` a few seconds
+**before** its assistant message and token accounting commit to `/items`. So a waiter that
+returns on "saw `running` + status idle" can read `/items` in that gap, find **no assistant
+message yet**, and return `""` — the same silent-empty-success class as §2.8, now from the
+*finish* side instead of the *dispatch* side. Observed directly: the first N=5 run returned
+an all-empty synthesis, yet re-reading each child moments later showed a genuine ~31k-token
+assistant answer that had simply not been queryable at read time.
+
+**The fix (v5).** The completion signal is the **presence of assistant text**, not the
+status flip. `wait_and_read` now keeps polling while there is no assistant text — whether the
+child is pre-dispatch *or* finished-but-settling — and only the deadline ends the loop
+(loud). `saw_running` is demoted to deadline-message detail. Re-running with this fix turned
+the all-empty synthesis into a correct 5/5.
+
+**Lesson.** "The turn ran" and "the turn's output is readable" are *different* events with a
+few-seconds gap; gate on the artifact you actually need (assistant text), never on a status
+proxy. A server fix — commit the assistant message atomically with the status flip, or emit
+a distinct terminal state only once items are durable — would let clients drop this gate.
+
+### 2.10 Transport errors during polling are transient and have an empty `str()` (Session 3)
+
+The same N=5 run surfaced a client-robustness trap. With the per-request `httpx` client
+timeout at 30s, one poll request stalled past it while five harnesses cold-booted and
+saturated the host, raising a bare `httpx.ReadError('')`. Two nasty properties compounded:
+(a) it is **not** a `WireError`, so it bypassed the fail-loud wrapper, and (b) its `str()` is
+**empty**, so it failed a whole task with the blank message `--> TASK 5 FAILED:` — maximally
+unhelpful. The child itself had run fine on the server.
+
+**The fix (v5).** Bump the client timeout to 60s, and treat `httpx.HTTPError` *during
+polling* as transient: log a one-line warning and keep polling (the next poll re-reads the
+authoritative snapshot; only the deadline ends the loop). Genuine server errors still surface
+as `WireError` — which is not an `httpx.HTTPError` — and still fail loud. The confirming run
+caught exactly one `ReadError('')`, recovered, and the task still returned its answer.
+
+**Lesson.** Under concurrent cold-boot load, transport-level errors are expected noise, not
+task failure; a batch waiter must distinguish *transport* faults (retry) from *server* faults
+(fail loud), and must never let an exception with an empty `str()` masquerade as a silent
+failure.
+
 ---
 
 ## 3. The meta-lesson
@@ -249,6 +309,8 @@ single thing that bit us in execution was a *dynamic* property no static read su
 | `OMNIGENT_SESSION_ID` absent in shell (§2.5) | env propagation | invisible |
 | title collision → 500 (§2.6) | re-run idempotency | partially |
 | `idle` overloaded → first-idle-wins race (§2.8, Session 2) | concurrency-timing / status semantics | invisible (needs N≥3 to even surface) |
+| `idle` settle-race: status flips before items commit (§2.9, Session 3) | runtime write-ordering / eventual consistency | invisible |
+| bare empty-`str()` transport error under cold-boot load (§2.10, Session 3) | client transport timing | invisible |
 
 This validates the feasibility doc's own §10 caveat and its §8 "to verify in the PoC" list
 — and argues that the *next* increment of confidence comes only from execution, not more
@@ -385,20 +447,24 @@ and the token count, both solid across all 12.
 
 **Yes, in three tiers — and Tier 1 is now proven *and* concurrency-verified.**
 
-- **Tier 1 — local throwaway fan-out (the shipped v3 skill): VIABLE, verified.** The
-  mechanism (parented create → seed-at-create → parallel poll → capture → teardown) works,
-  and after the v3 started-gate it works **correctly under concurrency at N=12**, not just
-  at the N=1 canary that gave false confidence (§2.8, §7). The honest caveats are scope, not
-  soundness: validated to N=12 (not yet the ~16 ceiling), `explorer`-only, local
-  single-user, no caps enforcement, run tied to one `sys_os_shell` call (no
-  background/resume). For wide read-only fan-outs on a local box, it is usable today.
-- **Tier 2 — persistent nested children, robust locally: ONE real fix away.** The blocker is
-  wart §2.1 / recommendation 1: REST-created parented children get no parent work-entry, so
-  they can't deliver completion and the runner retry-storms. Today's workaround is mandatory
-  teardown (which forfeits persistence). Registering a work-entry on REST create — or marking
-  such children "externally tracked, no parent delivery" — would let children **nest *and*
-  persist *and* deliver**, dropping both the teardown and the started-gate-as-only-signal.
-  This is a genuine build item, not a skill tweak.
+- **Tier 1 — local read-only fan-out (the shipped v5 skill): VIABLE, verified.** The
+  mechanism (parented create → seed-at-create → parallel poll → capture) works, and after
+  the started-gate (v3) plus the settle-race + transient-error fixes (v5, §2.9/§2.10) it
+  works **correctly under concurrency** — at N=12 (Session 2) and at N=5 with persistence on
+  (Session 3) — not just at the N=1 canary that gave false confidence (§2.8, §7, §9). The
+  honest caveats are scope, not soundness: validated to N=12 (not yet the ~16 ceiling),
+  `explorer`-only, local single-user, no caps enforcement, run tied to one `sys_os_shell`
+  call (no background/resume). For wide read-only fan-outs on a local box, it is usable today.
+- **Tier 2 — persistent nested children, robust locally: DONE (persistence verified at N=5,
+  Session 3).** The storm that made teardown mandatory is fixed at the runner (Fix 4, §2.1):
+  a non-deliverable terminal status is now 204-acknowledged, so children **nest *and*
+  persist** safely. Verified end to end at N=5 with the v5 skill (`TEARDOWN = False`): all
+  five children survived in `child_sessions`, zero storm signatures in the runner log, and
+  each was a genuine ~31k-token assistant turn (§9). The one remaining gap is delivery-only:
+  REST create still registers no parent work-entry, so inbox *delivery* doesn't fire — the
+  program reads items directly instead. Closing that (register a work-entry on REST create,
+  or mark such children "externally tracked") would let children deliver too, not just
+  persist; persistence itself no longer needs it.
 - **Tier 3 — secure / multi-user / at-scale: DEFERRABLE, designed but unexercised.** The
   hardened sandbox (credential-proxy + egress allowlist, capability-scoped token) from
   feasibility §3.1 is design-only; the §1.5 401-bail proves Tier 1 won't run multi-user as-is.
@@ -407,7 +473,49 @@ and the token count, both solid across all 12.
 
 **Bottom line.** The meta-lesson holds end to end: *the static read was flawless on
 structure, blind on lifecycle, and lifecycle surprises travel in packs.* Session 1 flushed
-the delivery/timing/wire pack; Session 2's N=12 run flushed the concurrency pack (the
-`idle`-race) **exactly as the "validate at N≥3" instinct predicted**. Tier 1 has now
-survived the probe that was designed to break it. The single highest-leverage next build is
-Tier-2's work-entry fix; the next *probe* is a push toward the concurrency ceiling.
+the delivery/timing/wire pack; Session 2's N=12 run flushed the dispatch-edge `idle` race
+**exactly as the "validate at N≥3" instinct predicted**; Session 3's N=5 persistence run
+flushed the finish-edge pack (the §2.9 settle-race + §2.10 transport noise) and proved
+children nest *and* persist with the storm fixed. The remaining build is the REST-create
+work-entry so children *deliver* too (not just persist); the next *probe* is a push toward
+the concurrency ceiling.
+
+---
+
+## 9. Session 3: persistence verified at N=5 (v5 settle-race + transient-error fixes)
+
+**Setup.** The next-session goal from the handoff: run a *real*, substantive fan-out with
+**persistence on** against the Fix-4 server. Authored a fresh `workflow.py` from the v4
+template at `.sybil/workflows/persistence-test.py` — N=5 `explorer` children, each seeded a
+genuine multi-paragraph design-research question (single-host fan-out failure modes; polling
+vs. SSE; overloaded status values; per-run caps; idempotent re-runs), `TEARDOWN = False`,
+parent id injected via `OMNIGENT_PARENT_SESSION_ID`. Roster full (Claude + Codex); server
+`GET /v1/me` → 200 (local single-user).
+
+**Two defects flushed, both client-side (see §2.9, §2.10).** The first run spawned and ran
+all five children correctly but returned an **all-empty synthesis** — the §2.9 settle-race
+(status flips to `idle` before the answer is queryable; the v4 "saw running" gate returned
+`""`). Fixing the completion signal to "assistant text present" exposed the second: one task
+died with a blank message — the §2.10 bare `ReadError('')` from a 30s poll timeout under
+cold-boot load. Fixed with a 60s client timeout + transient-`httpx.HTTPError` tolerance.
+
+**Result: 5/5, all four success signals green (v5).**
+
+| Signal | Result |
+|---|---|
+| Children persist | ✅ `GET /v1/sessions/{parent}/child_sessions` lists all 5 (none deleted); nested in the Subagents panel |
+| No runner storm | ✅ 0 `missing_work_entry` / `subagent_delivery_not_confirmed` / `missing_parent_inbox`, 0 `503` in the runner log (Fix 4 holding) |
+| Genuine-run signature | ✅ every child `idle`, **~30.6–31.5k tokens**, 1 assistant message, `last_task_error` None |
+| Correct synthesized output | ✅ full 5-section synthesis returned to the orchestrator; the fan-out never entered sybil's context |
+
+The confirming run also exercised §2.10 live: one transient `ReadError('')` was caught and
+recovered, and that task still returned. Validated at **N=5** (≥3, per the §2.8 rule);
+children left **up** by design (the persistence proof) and swept manually afterward.
+
+**What this nails down.** Tier-1 persistence is real: with Fix 4 the storm is gone, so
+REST-spawned parented children **nest and persist** safely, and the v5 skill defaults to
+keeping them. The two new findings (§2.9, §2.10) are both *client-lifecycle* surprises a
+static read could never show — consistent with the meta-lesson and with "lifecycle surprises
+travel in packs": Session 1 flushed delivery/timing/wire, Session 2 the dispatch-edge `idle`
+race, Session 3 the finish-edge settle-race + transport noise. The remaining Tier-2 gap is
+delivery-only (REST create still registers no work-entry); persistence no longer needs it.

@@ -82,16 +82,19 @@ server**:
      `content`. Assistant `content` is a list of parts with `type:"output_text"`
      (`{"type":"output_text","text":"…"}`). Role/content are NOT nested under a
      `data` key on this endpoint.
-   - **Completion is NOT merely `status != "running"`.** `status` `idle` is
-     **overloaded**: a freshly-created REST child reports `idle` *before* its
-     seeded turn is dispatched, and reports `idle` again *after* the turn
-     finishes. Accept `idle` as terminal **only once the turn has provably run** —
-     you observed `status == "running"` at least once, OR an assistant message is
-     already present in `/items`. A child stuck in the pre-dispatch `idle` must
-     fail **loud** at the timeout, never return an empty "success".
+   - **Completion is the ASSISTANT TEXT, not the status flip.** `status` `idle` is
+     **overloaded twice over**: a freshly-created REST child reports `idle` *before*
+     its seeded turn is dispatched, AND `status` flips back to `idle` a few seconds
+     *before* the assistant message + token accounting commit to `/items` (a
+     **settle-race**). So read completion from the **presence of assistant text**,
+     not from status: keep polling while there is no assistant text — whether the
+     child is pre-dispatch OR finished-but-settling — and fail **loud** at the
+     timeout, never returning an empty "success". Returning on "saw `running`"
+     alone captures `""` during the settle window; treating the first `idle` as
+     done captures an inert child — both lose uniformly under concurrency.
      `status == "failed"` carries `last_task_error`. (The template's
-     `wait_and_read` implements exactly this started-gate — do not regress it to
-     "first non-running == done".)
+     `wait_and_read` implements exactly this — do not regress it to "first
+     non-running == done" or "saw running == done".)
 2. **Write `workflow.py`** (template below) into a scratch dir, e.g.
    `.sybil/workflows/<slug>.py`. Fill in: the worker `sub_agent_name`, the list of
    per-task prompts, and the synthesis step.
@@ -135,7 +138,7 @@ only for throwaway wide fan-outs where you'd rather the tree return to clean.
 
 ```python
 #!/usr/bin/env python3
-"""Deterministic dynamic-workflow runner (v4). Drives PARENTED sub-agent sessions
+"""Deterministic dynamic-workflow runner (v5). Drives PARENTED sub-agent sessions
 over the local Omnigent REST API, fans them out in parallel, holds all
 intermediate state here, and prints ONLY the final synthesized answer to stdout.
 
@@ -148,12 +151,21 @@ Design (see SKILL.md for the why):
     GET /stream is a live tail that does NOT replay history (and its `idle` flag is
     a presence flag, not a completion signal), so an SSE waiter that connects after
     completion misses it and hangs. Re-reading the snapshot has no connect-race.
-  * Status 'idle' is AMBIGUOUS: a freshly-created REST child reports 'idle' BEFORE
-    its seeded turn is dispatched, and 'idle' again AFTER it finishes. wait_and_read
-    accepts 'idle' as terminal ONLY once the turn provably ran (it saw 'running', or
-    an assistant message exists); otherwise it keeps polling and fails loud at the
-    deadline. Treating the FIRST 'idle' as done silently returns empty results and
-    loses uniformly under concurrency (N=1 wins the dispatch race; N=12 loses it).
+  * Status 'idle' is AMBIGUOUS and the completion signal is the ASSISTANT TEXT, not
+    the status flip. A child reports 'idle' BEFORE its seeded turn is dispatched, AND
+    status flips back to 'idle' a few seconds BEFORE the assistant message + token
+    accounting commit to /items (a settle-race). wait_and_read returns ONLY once
+    assistant text is present; a child that is pre-dispatch OR finished-but-settling
+    keeps polling and fails loud at the deadline. Returning on "saw 'running'" alone
+    (the v4 bug) captures '' during the settle window; treating the FIRST 'idle' as
+    done (the v2 bug) captures an inert child. Both lose uniformly under concurrency
+    (N=1 wins the timing races; N=12 loses them) -- validate at N>=3.
+  * Transport errors during polling are TRANSIENT, not task failures. N cold-booting
+    harnesses saturate the host, so a poll GET can exceed the client timeout and
+    raise a bare httpx error (e.g. ReadError('') -- empty str(), which would fail a
+    task with a blank message). wait_and_read swallows httpx.HTTPError and keeps
+    polling; a real server error is a WireError (not an httpx error) and still fails
+    loud. The per-request client timeout is 60s.
   * Children PERSIST by default (TEARDOWN = False) so their transcripts stay
     inspectable in the Subagents panel. The runner acknowledges an undeliverable
     terminal status instead of 503-storming, so a surviving child is safe. Set
@@ -290,43 +302,62 @@ def _assistant_text(items: list[dict]) -> str:
 
 
 async def wait_and_read(client, child: str) -> str:
-    """Poll the child's snapshot until its seeded turn has DEMONSTRABLY run, then
-    read the final assistant text.
+    """Poll the child's snapshot until its seeded turn has DEMONSTRABLY produced an
+    assistant message, then return that text.
 
-    Why not "first non-running status == done"? A freshly-created REST child
-    reports status 'idle' BEFORE its seeded turn is dispatched, and 'idle' again
-    AFTER it finishes -- 'idle' is overloaded. Treating the first 'idle' as
-    terminal (the v2 bug) captures an inert child (only the seed, no assistant,
-    0 tokens, host_id None) and returns '' SILENTLY; under concurrency this loses
-    uniformly (N=1 wins the dispatch race, N=12 loses it). So accept 'idle' as
-    terminal ONLY once the turn provably ran: we observed 'running', OR an
-    assistant message already exists. A child that never dispatches bottoms out at
-    the deadline and fails LOUD instead of as an empty 'success'.
+    The completion signal is the ASSISTANT TEXT, not the status flip. 'idle' is
+    overloaded TWICE over: a freshly-created REST child reports 'idle' BEFORE its
+    seeded turn is dispatched, AND status flips back to 'idle' a few seconds BEFORE
+    the assistant message + token accounting commit to /items (a settle-race). So:
+      * treating the FIRST 'idle' as done (the v2 bug) captures an inert child
+        (only the seed, no assistant, 0 tokens, host_id None) and returns '';
+      * returning on "saw 'running'" alone (the v4 bug) captures '' during the
+        settle window after the turn finished but before its text is queryable.
+    Both return an empty 'success' and lose uniformly under concurrency (N=1 wins
+    the timing races, N=12 loses them). So return ONLY once assistant text is
+    present; a child that is pre-dispatch OR finished-but-settling keeps polling and
+    fails LOUD at the deadline.
+
+    Transport errors during polling are transient (N cold-booting harnesses saturate
+    the host; a poll GET can exceed the client timeout and raise a bare httpx error
+    whose str() is empty). We swallow httpx.HTTPError and keep polling; a real server
+    error surfaces as a WireError (not an httpx error) and still fails loud.
     """
     deadline = time.monotonic() + PER_CHILD_TIMEOUT_S
     saw_running = False
     while time.monotonic() < deadline:
         await asyncio.sleep(POLL_INTERVAL_S)
-        url = f"{BASE}/v1/sessions/{child}"
-        snap = _check(await client.get(url, headers=HEADERS), method="GET", url=url).json()
-        status = snap.get("status")
-        if status == "running":
-            saw_running = True
+        try:
+            url = f"{BASE}/v1/sessions/{child}"
+            snap = _check(await client.get(url, headers=HEADERS), method="GET", url=url).json()
+            status = snap.get("status")
+            if status == "running":
+                saw_running = True
+                continue
+            if status == "failed":
+                raise WireError(
+                    f"child {child} failed: {snap.get('last_task_error') or '(no detail)'}"
+                )
+            # Non-running, non-failed (typically 'idle'): the completion signal is the
+            # assistant text, NOT the status. Keep polling through the settle window.
+            items_url = f"{BASE}/v1/sessions/{child}/items?order=desc&limit=20"
+            r = _check(await client.get(items_url, headers=HEADERS), method="GET", url=items_url)
+            text = _assistant_text(r.json().get("data", []))
+            if text:
+                return text
+        except httpx.HTTPError as exc:
+            # Transient transport error (read timeout / reset under cold-boot load).
+            # NOT a task failure -- the next poll re-reads the authoritative snapshot;
+            # only the deadline ends this loop. Real server errors are WireErrors
+            # (not httpx.HTTPError) and still propagate loud.
+            print(f"--> warn: transient poll error for {child}: {exc!r}", file=sys.stderr)
             continue
-        if status == "failed":
-            raise WireError(
-                f"child {child} failed: {snap.get('last_task_error') or '(no detail)'}"
-            )
-        # Non-running, non-failed (typically 'idle'): disambiguate not-started vs done.
-        items_url = f"{BASE}/v1/sessions/{child}/items?order=desc&limit=20"
-        r = _check(await client.get(items_url, headers=HEADERS), method="GET", url=items_url)
-        text = _assistant_text(r.json().get("data", []))
-        if text or saw_running:
-            return text
-        # Pre-dispatch 'idle': the seeded turn hasn't started yet -- keep polling.
+    detail = (
+        "ran but produced no assistant text before the deadline"
+        if saw_running else "stuck in pre-dispatch 'idle' (never started)"
+    )
     raise WireError(
-        f"child {child} never ran its seeded turn within {PER_CHILD_TIMEOUT_S:.0f}s "
-        "(stuck in pre-dispatch 'idle'; see the REST-create work-entry wart below)"
+        f"child {child} produced no answer within {PER_CHILD_TIMEOUT_S:.0f}s ({detail})"
     )
 
 
@@ -348,7 +379,7 @@ def synthesize(results: list[str]) -> str:
 async def main() -> None:
     if not TASKS:
         raise SystemExit("no TASKS defined")
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         await preflight(client)
         agent_id = await parent_agent_id(client)
         sem = asyncio.Semaphore(MAX_CONCURRENCY)
@@ -393,11 +424,18 @@ if __name__ == "__main__":
 
 ## Known server warts worth filing (so a v2 can drop the workarounds)
 
-- **`status` `idle` is overloaded** (pre-dispatch vs finished), so completion
-  cannot be read from status alone — the client must gate on "the turn provably
-  ran" (saw `running`, or an assistant message exists). A distinct
-  `created`/`queued` state emitted before first dispatch would let clients tell
-  "not started" from "done" directly, and drop the started-gate workaround.
+- **`status` `idle` is overloaded — TWICE.** It means pre-dispatch *and* finished,
+  and worse, `status` flips to `idle` a few seconds *before* the assistant message +
+  token accounting commit to `/items` (a settle-race). So completion cannot be read
+  from status at all — the client must gate on **assistant text being present**, and
+  keep polling through both the pre-dispatch and the post-finish settle windows. A
+  distinct `created`/`queued` pre-dispatch state AND committing the assistant message
+  atomically with the status flip would let clients drop this workaround.
+- **The per-request client timeout must absorb cold-boot load.** With N harnesses
+  cold-booting at once, a poll request can stall past a tight timeout and raise a
+  bare `httpx` transport error whose `str()` is empty (e.g. `ReadError('')`), which
+  silently fails a task with a blank message. The template uses a 60s client timeout
+  and treats `httpx.HTTPError` during polling as transient (keep polling).
 - **REST-created parented children get no parent work-entry.** `register_subagent_work()`
   is only called on the in-runner dispatch path, so REST-spawned parented children
   still can't *deliver* terminal status to the parent inbox (the program reads items
