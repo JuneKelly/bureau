@@ -232,52 +232,77 @@ prompt: |
   sessions. This REPLACES the old prose-only `.sybil/registry.json`
   convention — nothing read that file back at session start, so its task
   state was effectively ephemeral. Select the backend ONCE per run, from the
-  topic checkout root, with a detect-then-branch step (fully git-free — bd
-  needs no `.git`, no remote, and creates no nested repo):
-  - Reuse path — if `bd where --json` exits 0, a beads workspace already
-    resolves (discovery walks UP the tree), so the project has its own DB:
-    use plain `bd` and bind the handle `$BD` = `bd`. This inherits the
-    project's own remote/sync, so task state is team-shared and cross-machine
-    — the best case.
-  - Fallback path — else create a self-contained, git-free DB under the
-    already-gitignored `.sybil/`: `mkdir -p .sybil`, then
-    `( cd .sybil && BD_NON_INTERACTIVE=1 bd init --prefix sy --skip-agents
-    --skip-hooks )`. This lands the DB at `.sybil/.beads` with no nested
-    `.git`, invisible to the project (`**/.sybil` is already gitignored).
-    Drive it via `bd -C .sybil` and bind `$BD` = `bd -C .sybil`.
-  `bd init` is NOT idempotent (it errors on an existing DB), so it MUST stay
-  gated behind the `bd where` detect — never init blind. `-C` only OPERATES
-  on an existing workspace and cannot CREATE one, which is why the fallback
-  must `cd` into `.sybil` before `bd init`. Use `$BD` for every task op for
-  the rest of the run.
+  topic checkout root, with a THREE-WAY detect (fully git-free — bd needs no
+  `.git`, no remote, and creates no nested repo). bd discovery walks UP only,
+  so a root-level `bd where` never re-finds the `.sybil/.beads` fallback that
+  lives BELOW the root; the middle reuse check is therefore the filesystem
+  test `[ -d .sybil/.beads ]`, NOT a bd command (`bd -C .sybil where`/`list`
+  false-positive by walking up into an ancestor `.beads` when `.sybil` is
+  empty):
+
+  ```sh
+  if bd where --json >/dev/null 2>&1; then
+      BD="bd"                       # (1) project already has a beads DB at/above root
+  elif [ -d .sybil/.beads ]; then
+      BD="bd -C .sybil"             # (2) fallback workspace already exists → REUSE, no init
+  else
+      mkdir -p .sybil               # (3) first run → create the self-contained fallback
+      ( cd .sybil && BD_NON_INTERACTIVE=1 bd init --prefix sy --skip-agents --skip-hooks )
+      BD="bd -C .sybil"
+  fi
+  ```
+
+  Branch (1) inherits the project's own remote/sync, so task state is
+  team-shared and cross-machine WHEN that workspace has a remote configured;
+  otherwise it's still durable locally. Branch (3) lands a self-contained DB
+  at `.sybil/.beads` with no nested `.git`, invisible to the project
+  (`**/.sybil` is already gitignored), driven via `bd -C .sybil`. `bd init`
+  is NOT idempotent (it errors on an existing DB), so it MUST stay gated
+  behind BOTH the root `bd where` detect AND the `[ -d .sybil/.beads ]` reuse
+  check — init runs ONLY on the genuine first run, never blind. `-C` only
+  OPERATES on an existing workspace and cannot CREATE one, which is why the
+  fallback must `cd` into `.sybil` before `bd init`. Use `$BD` for every task
+  op for the rest of the run.
 
   Lifecycle → bd, capturing ids as you go (`bd q` / `--silent` gives ID-only
   output for clean capture):
-  - Topic (the run's umbrella) → `$BD create -t epic …`; capture the epic id.
-  - Subtask → `$BD create -t task --parent <epic> --acceptance "<contract>"`.
-  - Dispatched → `$BD update <id> --claim`, and record the sub-agent's
-    conversation_id with `$BD update <id> --metadata conversation_id=<…>`
-    (this replaces recording the conversation_id in the old registry).
-  - Outcome → `$BD update <id> --notes "<result>"`.
+  - Topic (the run's umbrella) → `$BD create -t epic … --json`; capture the
+    epic id.
+  - Subtask →
+    `$BD create -t task --parent <epic> --acceptance "<contract>" --json`.
+  - Dispatched → `$BD update <id> --claim --json`, and record the sub-agent's
+    conversation_id with
+    `$BD update <id> --set-metadata conversation_id=<value> --json` (this
+    replaces recording the conversation_id in the old registry).
+    `--set-metadata key=value` merges into existing metadata; note that at
+    CREATE time only the JSON form works —
+    `--metadata '{"conversation_id":"<value>"}'`.
+  - Outcome → `$BD update <id> --notes "<result>" --json`.
   - Blocking review finding → a child fix-task:
-    `$BD create -t task --parent <task> …`, then `$BD dep add <task> <fix>`.
-  - Verified + merged back → `$BD close <id>`.
+    `$BD create -t task --parent <task> … --json`, then
+    `$BD dep add <task> <fix>`.
+  - Verified + merged back → `$BD close <id> --json`.
   - Ordering / gates → `$BD dep add <blocked> <blocker>`, and
     `$BD ready --claim --json` to pull the next unblocked, claimable task.
 
   Resume across sessions is the whole point — the capability the old registry
-  could NOT provide. At the START of every run, right after selecting `$BD`,
-  pick up prior state with `$BD list --status open --json` and
-  `$BD ready --json` before creating anything new, so a fresh session
-  continues the same tasks instead of starting over.
+  could NOT provide. It hinges on the three-way detect: on a later session
+  the `.sybil` fallback DB is re-found by the `[ -d .sybil/.beads ]` reuse
+  branch (NOT by root `bd where`, which walks up and never sees it), so `$BD`
+  binds back to the existing workspace instead of re-initing. At the START of
+  every run, right after selecting `$BD`, pick up prior state with
+  `$BD list --status open --json` and `$BD ready --json` before creating
+  anything new, so a fresh session continues the same tasks instead of
+  starting over.
 
   bd scriptability guardrails:
   - Always pass `--json` (and `bd q` / `--silent` for ID capture) and parse
     the output deterministically — never scrape human-formatted text.
   - NEVER run `bd edit` or `bd create-form`: they open `$EDITOR` and HANG a
     non-interactive agent. Use `bd create` / `bd update` with flags instead.
-  - Gate `bd init` behind the `bd where` detect (it is not idempotent), and
-    pass `BD_NON_INTERACTIVE=1` on init.
+  - Gate `bd init` behind BOTH the root `bd where` detect AND the
+    `[ -d .sybil/.beads ]` reuse check (it is not idempotent — it runs only
+    on the genuine first run), and pass `BD_NON_INTERACTIVE=1` on init.
   - Judge success by EXIT CODE, not stderr — advisory lines like
     `beads.role not configured` or `No Dolt remote configured` exit 0 and are
     not failures.
