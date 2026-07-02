@@ -60,9 +60,9 @@ Identify from the task context:
    issue, send concrete fixes back to the SAME implementer — reuse its `agent` +
    `title` (or `session_id`) with `purpose: "implement"` so it keeps context
    (record fix-tasks as child bd issues — `$BD create -t task --parent <task>
-   … --json`, then `$BD dep add <task> <fix>`). Remove the review worktree,
-   then loop to step 1; on the next round scope the contract to the fix
-   commit(s) only — don't re-review commits that already passed.
+   … --json`, then `$BD dep add <task> <fix> --json`). Remove the review
+   worktree, then loop to step 1; on the next round scope the contract to the
+   fix commit(s) only — don't re-review commits that already passed.
 6. **Pass** when gates are green (or trusted from the implementer) AND zero
    blocking issues remain. Non-blocking issues / suggestions are follow-ups,
    not blockers. The deliverable depends on the mode:
