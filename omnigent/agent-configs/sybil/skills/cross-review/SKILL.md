@@ -59,7 +59,8 @@ Identify from the task context:
 5. The reviewer **surfaces** issues; it does not fix them. For each **blocking**
    issue, send concrete fixes back to the SAME implementer — reuse its `agent` +
    `title` (or `session_id`) with `purpose: "implement"` so it keeps context
-   (record fix-tasks in the registry if using one). Remove the review worktree,
+   (record fix-tasks as child bd issues — `$BD create -t task --parent <task>
+   … --json`, then `$BD dep add <task> <fix>`). Remove the review worktree,
    then loop to step 1; on the next round scope the contract to the fix
    commit(s) only — don't re-review commits that already passed.
 6. **Pass** when gates are green (or trusted from the implementer) AND zero
@@ -80,6 +81,8 @@ Identify from the task context:
 - `reviewer` must be AVAILABLE (`codex` on PATH, per the roster preflight). If
   it isn't, you CANNOT run independent cross-vendor review — don't dispatch it,
   say so explicitly, and pull in the human at the plan gate.
-- The registry (`.sybil/registry.json`) tracks multi-task state in fanout mode;
-  record fix-tasks and non-blocking follow-ups there. In-place single-task work
-  usually needs no registry entry — the orchestrator's context is enough.
+- The bd task backend (defined in the system prompt) tracks multi-task state;
+  record fix-tasks as child issues (`$BD create -t task --parent <task>`) and
+  non-blocking follow-ups as bd notes/issues. In-place single-task work can
+  lean on the orchestrator's context, but bd still gives durable, resumable
+  state across sessions.

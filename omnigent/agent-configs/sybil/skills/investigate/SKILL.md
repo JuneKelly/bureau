@@ -43,7 +43,7 @@ repository-specific technical question.
 
 ## Notes
 - The orchestrator may use its own tools only to create task packets, maintain
-  the registry, or check deterministic external status. It must not answer the
+  the bd task backend, or check deterministic external status. It must not answer the
   user's substantive question from its own direct file reads, shell output,
   connector fetches, or terminal scrollback.
 - Keep task scopes narrow enough that each worker can return a concise report

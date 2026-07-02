@@ -44,7 +44,7 @@ place.
      dispatch where a cheaper tier would do?
    - **Verification** — did every implementation PR get cross-reviewed by
      `reviewer`? Any self-sign-off or skipped gate?
-   - **Hygiene & safety** — isolated worktrees, registry kept current,
+   - **Hygiene & safety** — isolated worktrees, bd task state kept current,
      never-merge honored, escalation at the right gates (plan gate, hard
      blocks, unavailable worker).
    - **Efficiency & cost** — redundant dispatches, unnecessary waves, work that
