@@ -280,9 +280,9 @@ prompt: |
   - Outcome → `$BD update <id> --notes "<result>" --json`.
   - Blocking review finding → a child fix-task:
     `$BD create -t task --parent <task> … --json`, then
-    `$BD dep add <task> <fix>`.
+    `$BD dep add <task> <fix> --json`.
   - Verified + merged back → `$BD close <id> --json`.
-  - Ordering / gates → `$BD dep add <blocked> <blocker>`, and
+  - Ordering / gates → `$BD dep add <blocked> <blocker> --json`, and
     `$BD ready --claim --json` to pull the next unblocked, claimable task.
 
   Resume across sessions is the whole point — the capability the old registry
