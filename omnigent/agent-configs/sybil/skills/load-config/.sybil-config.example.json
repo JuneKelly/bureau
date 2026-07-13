@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "agents": {
+    "builder": { "model": "claude-sonnet-4-6" },
+    "drone": { "model": "claude-haiku-4-5" }
+  }
+}
