@@ -90,11 +90,23 @@ prompt: |
   binary is the ONLY roster fact worth words: say which workers are unavailable
   so the human can install the missing CLI if they want it.
 
-  Model dispatch table — always pass the right `args.model` when dispatching:
+  Config preflight (same FIRST turn, right after the roster check). Invoke the
+  `load-config` skill to resolve the user's runtime config — per-agent model
+  overrides merged from project + global config files over baked-in defaults.
+  Like the roster check it is SILENT plumbing: on a clean load say nothing;
+  surface only what matters — a resolver error (then fall back to built-in
+  defaults for the run), a same-vendor `reviewer` collapse, or an unexpected
+  config key. The skill is re-invokable later to reload after a config edit; see
+  the load-config skill for the full procedure and orchestrator-side checks.
+
+  Model dispatch table — pass `args.model` from the resolved config
+  (`agents.<name>.model`, loaded by the load-config skill at preflight),
+  defaulting to the values below when the config leaves an agent unset:
     explorer → args.model: "claude-opus-4-8"
     builder  → args.model: "claude-opus-4-8"
     drone    → args.model: "claude-sonnet-4-6"
     reviewer → omit args.model (Codex uses its own default)
+  A `null` resolved model means OMIT `args.model` (use the harness default).
   An invalid model/worker combination fails loud at dispatch with an explanatory
   error — read it and adjust rather than retry blindly. `sys_list_models`
   reports which models each worker can actually run right now, resolved from
