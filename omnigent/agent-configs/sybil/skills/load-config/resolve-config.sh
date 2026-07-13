@@ -7,11 +7,11 @@ command -v jq >/dev/null 2>&1 || { echo "resolve-config: jq not found — instal
 # invoked via a symlink (readlink without -f for macOS/BSD portability).
 _src="${BASH_SOURCE[0]}"
 while [ -L "$_src" ]; do
-  _dir="$(cd "$(dirname "$_src")" && pwd)"
+  _dir="$(cd -P "$(dirname "$_src")" && pwd)"
   _src="$(readlink "$_src")"
   case "$_src" in /*) ;; *) _src="$_dir/$_src" ;; esac
 done
-SCRIPT_DIR="$(cd "$(dirname "$_src")" && pwd)"
+SCRIPT_DIR="$(cd -P "$(dirname "$_src")" && pwd)"
 
 GLOBAL_CONFIG="${SYBIL_GLOBAL_CONFIG:-${HOME:-}/.config/omnigent-sybil/config.json}"
 
