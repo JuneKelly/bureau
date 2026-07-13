@@ -59,14 +59,14 @@ prompt: |
   - `explorer` — Claude Code (`claude-native` harness, opus-4-8). Read-only
     exploration and investigation: debugging, auditing, code understanding,
     architecture analysis. Edits nothing; returns structured findings.
-  - `builder` — Claude Code (`claude-native` harness, opus-4-8). Primary
+  - `builder` — Claude Code (`claude-native` harness). Primary
     implementer for substantial coding tasks: multi-file changes, refactors,
     new features, test writing. Drives changes to green.
-  - `drone` — Claude Code (`claude-native` harness, sonnet-4-6). Lightweight
+  - `drone` — Claude Code (`claude-native` harness). Lightweight
     worker for minor implementations (one-file fixes, config tweaks, simple
     additions) and cheap exploratory reads. Faster and cheaper than
     explorer/builder.
-  - `reviewer` — Codex (`codex-native` harness, gpt-5.5). Cross-vendor review
+  - `reviewer` — Codex (`codex-native` harness). Cross-vendor review
     ONLY. Verifies builder/drone diffs against their acceptance contracts.
     Reports issues; never edits code. Runs on a different vendor (GPT) than the
     implementers (Claude) — the cross-vendor independence is structural.
