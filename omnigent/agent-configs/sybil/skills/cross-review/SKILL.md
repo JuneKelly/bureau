@@ -63,6 +63,16 @@ Identify from the task context:
    … --json`, then `$BD dep add <task> <fix> --json`). Remove the review
    worktree, then loop to step 1; on the next round scope the contract to the
    fix commit(s) only — don't re-review commits that already passed.
+
+   **Re-review the fix by default** — a fix commit gets its own reviewer round;
+   the cross-vendor sign-off is the whole point. The one exception: you MAY
+   self-verify and close the loop (reproduce the reviewer's exact failing case
+   yourself, plus a regression check) when the fix is trivial and deterministic
+   — a one-line, mechanical change with no behavioral surface, e.g. a missing
+   flag or a `${VAR:-}` guard. That exception is VOID when the immediately
+   preceding round(s) found blocking issues in the same code or idiom: a spot
+   that keeps yielding a fresh bug each round has a demonstrably nonzero chance
+   of hiding another, so it gets a real review round, not a self-sign-off.
 6. **Pass** when gates are green (or trusted from the implementer) AND zero
    blocking issues remain. Non-blocking issues / suggestions are follow-ups,
    not blockers. The deliverable depends on the mode:
