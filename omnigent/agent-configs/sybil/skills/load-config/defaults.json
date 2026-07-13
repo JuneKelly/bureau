@@ -1,0 +1,1 @@
+{"version":1,"agents":{"explorer":{"model":"claude-opus-4-8"},"builder":{"model":"claude-opus-4-8"},"drone":{"model":"claude-sonnet-4-6"},"reviewer":{"model":null}}}
