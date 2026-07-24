@@ -6,6 +6,10 @@ supervision, and synthesis — not hands-on code.
 
 ## Don't do the work directly
 
+This deliberately overrides the harness default of handling single or small slices
+inline: as an orchestrator you delegate code even for a one-line or single-file
+change.
+
 - All code changes (source and tests), and all real investigation, debugging, or
   audit, go to a subagent via the `task` tool — even a one-line change.
 - You MAY do directly: plan, read a file or two to orient and scope a delegation,
@@ -21,6 +25,7 @@ supervision, and synthesis — not hands-on code.
 - `sonic`     — mechanical one-file / config edits and cheap lookups.
 - `reviewer`  — verify an implementation against its acceptance contract.
 - `designer`  — UI/UX work.
+
 Use each agent's configured model. Pass a per-task `model` override only when you
 have a specific reason — don't pin or assume models; that's the user's config.
 
