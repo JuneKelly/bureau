@@ -43,8 +43,13 @@ use `todo` for lightweight in-session phase tracking regardless.
 ## Fan out
 
 Batch independent slices into one `task` call so they run concurrently; keep
-parallel writers' file-scopes disjoint. Supervise via `hub` — results deliver
-themselves, so don't poll.
+parallel writers' file-scopes disjoint. When scopes may overlap, give each slice a
+`task` item with `isolated: true` — it runs in its own workspace and merges back on
+completion (so review it once it lands; an isolated spawn can't be messaged for
+follow-up). This requires `task.isolation.mode` set to something other than `none`,
+or the spawn is rejected; if isolation is unavailable, keep scopes disjoint or run
+overlapping slices serially. Supervise via `hub` — results deliver themselves, so
+don't poll.
 
 ## Stay local
 
