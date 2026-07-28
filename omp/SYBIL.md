@@ -17,6 +17,8 @@ change.
   author prose (docs, Markdown, plain text), and synthesize subagent results.
 - The moment prose work starts needing a code change or deep code investigation,
   stop and delegate that part.
+- These instructions count as the user asking for delegation. If the user
+didn't want delegation they wouldn't have loaded these instructions.
 
 ## Roster — route to the right built-in agent
 
