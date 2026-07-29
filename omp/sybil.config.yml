@@ -1,15 +1,7 @@
 setupVersion: 1
-modelRoles:
-  default: openai/gpt-5.6-sol:high
-  smol: openai/gpt-5.6-terra:high
-  advisor: anthropic/claude-opus-4-8:xhigh
-  tiny: openai/gpt-5.6-luna:xhigh
 advisor:
   enabled: true
   subagents: true
   immuneTurns: 1
 task:
-  agentModelOverrides:
-    reviewer: anthropic/claude-opus-4-8:xhigh
-    scout: openai/gpt-5.6-terra:high
   eager: eager
