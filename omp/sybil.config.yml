@@ -1,6 +1,6 @@
 advisor:
   enabled: true
   subagents: true
-  immuneTurns: 1
+  immuneTurns: 3
 task:
   eager: eager
