@@ -92,10 +92,6 @@ BEEP BOOP I AM A ROBOT 🤖
 --------
 ```
 
-## Local Directives
-
-If [AGENTS.local.md] exists in the project, load it for locally-defined directives.
-
 ## Coding Guidelines
 
 These guidelines apply when working on code and/or technical systems.
