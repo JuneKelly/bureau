@@ -4,3 +4,4 @@ advisor:
   immuneTurns: 3
 task:
   eager: eager
+  maxRecursionDepth: 1
