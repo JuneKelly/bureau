@@ -1,0 +1,7 @@
+{
+  "name": "bureau-magi",
+  "private": true,
+  "omp": {
+    "extensions": ["./index.ts"]
+  }
+}
