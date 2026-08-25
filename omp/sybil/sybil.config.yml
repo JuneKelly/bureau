@@ -1,7 +1,7 @@
 advisor:
   enabled: true
-  subagents: false
+  subagents: true
   immuneTurns: 3
 task:
-  eager: eager
+  eager: always
   maxRecursionDepth: 1

@@ -3,7 +3,7 @@ advisor:
 async:
   enabled: false
 task:
-  eager: eager
+  eager: always
   batch: true
   maxConcurrency: 3
   maxRecursionDepth: 1
