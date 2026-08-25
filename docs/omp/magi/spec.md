@@ -27,6 +27,22 @@ MAGI is not intended for routine code generation, mechanical migrations,
 localized bug fixes with known remedies, formatting, or ordinary line-level code
 review.
 
+## Starting a deliberation
+
+A user may start an interactive MAGI session and describe the decision in plain
+language, or supply the decision as the initial prompt. A useful prompt states
+the desired outcome, decision, observed problem, known constraints, and any
+candidate approaches. These fields are helpful but not mandatory; MAGI owns
+construction of the formal problem dossier.
+
+Existing proposals, incident reports, specifications, or other context may be
+attached or referenced in the initial prompt. Users should not create a formal
+dossier solely to invoke MAGI, because doing so duplicates its framing work and
+may anchor deliberation around a preferred solution.
+
+After deliberation, the user reviews any required human decision and accepts or
+rejects the result before passing the final handoff to an execution orchestrator.
+
 ## Council
 
 MAGI consists of three independent perspectives and a neutral integrator.
