@@ -16,6 +16,6 @@ script_dir=$(cd -P -- "$(dirname -- "$script_path")" && pwd)
 bureau_dir=$(dirname -- "$script_dir")
 
 exec omp \
-  --append-system-prompt="$bureau_dir/omp/SYBIL.md" \
-  --config="$bureau_dir/omp/sybil.config.yml" \
+  --append-system-prompt="$bureau_dir/omp/sybil/SYBIL.md" \
+  --config="$bureau_dir/omp/sybil/sybil.config.yml" \
   "$@"

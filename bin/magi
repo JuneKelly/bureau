@@ -16,8 +16,8 @@ script_dir=$(cd -P -- "$(dirname -- "$script_path")" && pwd)
 bureau_dir=$(dirname -- "$script_dir")
 
 exec omp \
-  --system-prompt="$bureau_dir/omp/MAGI.md" \
-  --config="$bureau_dir/omp/magi.config.yml" \
+  --system-prompt="$bureau_dir/omp/magi/MAGI.md" \
+  --config="$bureau_dir/omp/magi/magi.config.yml" \
   --no-extensions \
   --extension="$bureau_dir/omp/magi" \
   --tools=read,grep,glob,web_search,task,hub \
