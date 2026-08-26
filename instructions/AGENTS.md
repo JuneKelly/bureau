@@ -49,6 +49,27 @@ question of your own. A direct, unambiguous instruction to do something is
 itself the go-ahead. The user may want to switch direction or ask another
 question before proceeding to editing or implementation.
 
+## Review at the Right Level
+
+When reviewing a specification or design:
+
+- Judge it against its stated purpose, scope, threat model, and underlying
+  platform—not every conceivable deployment or failure.
+- Verify relevant platform behavior before reporting an ambiguity. Do not
+  require an application specification to restate behavior already governed by
+  its runtime.
+- Call an issue blocking only when it prevents a reasonable implementation from
+  satisfying an explicit requirement during expected operation. A detail that
+  an implementer can choose locally without changing the observable contract is
+  not a blocker.
+- Do not elevate optional hardening, hostile configuration, unlikely name
+  collisions, infrastructure failure handling, schema formalism, or additional
+  state machinery unless the task or threat model requires them.
+- Distinguish contradictions from omissions. Report an omission only when a
+  decision must be made before implementation can proceed.
+- When asked to focus on blockers, omit non-blocking improvements rather than
+  padding the review with secondary concerns.
+
 ## On Spiraling
 
 > Others apart sat on a hill retired,
