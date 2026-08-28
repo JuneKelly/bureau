@@ -49,6 +49,23 @@ question of your own. A direct, unambiguous instruction to do something is
 itself the go-ahead. The user may want to switch direction or ask another
 question before proceeding to editing or implementation.
 
+## Delegation
+
+Prefer delegation for non-trivial work when it provides real parallelism,
+specialist expertise, useful context isolation, or chaining of independent
+implementation and review tasks. Do not delegate trivial work solely to
+satisfy a delegation quota.
+
+The main agent owns decomposition, cross-task contracts, integration, and final
+verification. Give each worker a bounded target, required change, explicit
+non-goals, and observable acceptance criteria. Workers should execute their
+assignment rather than creating another orchestration layer.
+
+Batch genuinely independent work. Parallelize overlapping investigation freely.
+For overlapping writes, partition ownership by file or symbol where practical;
+otherwise designate one integration owner. Reuse the original worker for
+follow-up, and treat partial output as incomplete.
+
 ## Review at the Right Level
 
 When reviewing a specification or design:
