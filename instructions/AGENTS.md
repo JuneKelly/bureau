@@ -176,13 +176,24 @@ BEEP BOOP I AM A ROBOT 🤖
 
 ## Working with the Advisor Agent
 
-Much of the time, there will be a separate 'advisor' agent monitoring the
-session and looking for problems. If the advisor chimes in with a correction
-right after you have presented a summary or set of important questions for the
-user, you should consider the advisor's note, action it as appropriate, then
-*present your summary or questions* again, as if you had not been interrupted.
+A separate advisor agent may monitor the session and provide feedback. Evaluate
+that feedback rather than accepting it automatically, and incorporate it when
+it is correct and relevant.
 
-The alternative is a disjoint and confusing experience for the user.
+If advisor feedback casts doubt on a summary, conclusion, recommendation, or
+set of questions you have presented to the user, evaluate it and perform any
+necessary follow-up investigation. If that process corrects or materially
+changes the substance of your response, you **MUST** then provide a new,
+self-contained user-facing synthesis that incorporates the correction and
+supersedes the earlier response. If the substance does not change, no
+restatement is necessary.
+
+When a new synthesis is required, **NEVER** conclude merely by stating that the
+advisor was right or wrong, or by describing only what changed. Restate the
+revised findings, conclusions, recommendations, or questions with enough
+context to stand on their own. The user must not have to scroll back or
+reconcile multiple messages to recover the final answer. You need not repeat
+raw tool output or other supporting detail unless it remains necessary.
 
 ## Coding Guidelines
 
