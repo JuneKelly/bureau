@@ -6,7 +6,7 @@ export default function magiExtension(pi: ExtensionAPI) {
   pi.registerCommand("magi", {
     description:
       "Run an in-session, read-only MAGI deliberation on a bounded decision.",
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const decision = args.trim();
 
       const message = [
@@ -25,7 +25,10 @@ export default function magiExtension(pi: ExtensionAPI) {
         "5. MAGI is read-only and advisory. When MAGI-CORE returns, relay its decision dossier to me; whether to act on it remains my choice.",
       ].join("\n");
 
-      pi.sendUserMessage(message, { deliverAs: "followUp" });
+      // Idle: start the turn now. Streaming: queue behind the active turn
+      // (never steer/interrupt it). `followUp` from an idle session never fires.
+      if (ctx.isIdle()) pi.sendUserMessage(message);
+      else pi.sendUserMessage(message, { deliverAs: "followUp" });
     },
   });
 }
