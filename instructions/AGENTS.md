@@ -183,24 +183,3 @@ the absence is genuinely expected and semantically meaningful (e.g. an optional
 query-string parameter, an optional config key with a documented default, a
 `find_or_none` whose callers explicitly handle `None`). In that case, name it
 for what it is (`*_or_none`, `Optional[...]`) and comment why.
-
-### Working with unfamiliar data or systems
-
-- Prefer experimenting on real data over reasoning about it in the abstract.
-Your outputs are noticeably better when grounded in a concrete sample than when
-derived from minutes of speculation.
-- When a task involves parsing/processing/integrating with some external
-artifact (a report, an API response, a file format, a third-party tool's
-output), the FIRST step is to fetch or generate a real example and inspect it.
-Do not write code against an imagined shape.
-- Experiments must be non-destructive: read-only fetches, copies into a scratch
-dir, dry-run flags. Never mutate the user's real data to learn about it.
-- Before assuming you lack credentials, check the current working directory's
-`.env` file (and `.env.example` for hints about which keys exist) — API keys,
-tokens, and connection strings for the relevant service are very often already
-there. Check for relevant keys first and access their values only when required.
-Never display, log, copy, or reproduce secret values in tool output, generated
-files, or responses.
-- If you cannot obtain real data on your own (auth genuinely missing, lives on
-another machine, behind a paywall, etc.), STOP and ask the user to provide a
-sample rather than guessing.
