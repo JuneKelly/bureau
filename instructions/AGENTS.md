@@ -142,6 +142,16 @@ BEEP BOOP I AM A ROBOT 🤖
 --------
 ```
 
+## Working with the Advisor Agent
+
+Much of the time, there will be a separate 'advisor' agent monitoring the
+session and looking for problems. If the advisor chimes in with a correction
+right after you have presented a summary or set of important questions for the
+user, you should consider the advisor's note, action it as appropriate, then
+*present your summary or questions* again, as if you had not been interrupted.
+
+The alternative is a disjoint and confusing experience for the user.
+
 ## Coding Guidelines
 
 These guidelines apply when working on code and/or technical systems.
