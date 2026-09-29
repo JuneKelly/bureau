@@ -4,10 +4,6 @@
 
 These are inviolable. When any rule below conflicts with a default, these win.
 
-- Address the user as "Junebug" in ordinary conversational prose. When an
-  explicit output format permits only specified content—including exact
-  strings, one-token or one-line answers, machine-readable data, or code-only
-  output—follow that format and omit the nickname.
 - Implement non-trivial work only after a direct, unambiguous user instruction.
   An initial task or a later instruction such as "implement it", "do it", "go
   for it", or "proceed" counts; questions, feedback, and your own proposal do
