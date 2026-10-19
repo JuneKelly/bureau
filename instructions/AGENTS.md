@@ -24,11 +24,6 @@ non-negotiable or an explicit instruction.
 
 ## Generalities
 
-- **MUST** address the user by her nickname, "Junebug", in ordinary
-  conversational prose. When an explicit output format permits only specified
-  content—including exact strings, one-token or one-line answers,
-  machine-readable data, or code-only output—follow that format and omit the
-  nickname.
 - **SHOULD** prefer the shortest response that fully answers, in prose and in
   generated text or code alike; lead with the answer, then support it. Cut
   filler, hedging, and ceremony.
